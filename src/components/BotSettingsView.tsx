@@ -325,6 +325,17 @@ export default function BotSettingsView() {
           💡 <strong>كل ما عليك فعله:</strong> الصق توكن البوت الذي حصلت عليه من <strong>@BotFather</strong> في الحقل أدناه واضغط <strong>Save & Activate Bot</strong>. سيقوم النظام تلقائياً بربط البوت وتفعيل الويب هوك وستعمل كافة الأزرار فوراً في التيليجرام!
         </div>
 
+        {/* User Points & Balance Preservation Guarantee */}
+        <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-200 flex items-start gap-2.5">
+          <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <strong className="text-emerald-300 block">🛡️ ضمان حفظ النقاط والأرصدة عند تغيير التوكن:</strong>
+            <p className="text-emerald-200/90 text-[11px] leading-relaxed">
+              جميع أرصدة النجوم (Stars) ونقاط المستخدمين وسجلات الشراء والإحالات مرتبطة بشكل دائم بمعرّف التليجرام الخاص بالمستخدم (Telegram ID). عند تغيير التوكن أو استبدال البوت بآخر جديد، <strong>لن يخسر أي مستخدم نقاطه أو رصيده نهائياً</strong> وستبقى كافة الأرصدة محفوظة بالكامل في قاعدة البيانات.
+            </p>
+          </div>
+        </div>
+
         <div>
           <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase tracking-wider">
             Telegram Bot Token

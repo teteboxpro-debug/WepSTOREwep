@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import path from 'node:path';
+import fs from 'node:fs';
 import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import { db, hashPassword, verifyPassword } from './server/db.js';
@@ -12,8 +13,16 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const isProd = process.env.NODE_ENV === 'production';
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Support video uploads up to 35-40MB
+app.use(express.json({ limit: '40mb' }));
+app.use(express.urlencoded({ extended: true, limit: '40mb' }));
+
+// Static uploads serving for direct videos
+const UPLOADS_DIR = path.resolve(process.cwd(), 'data', 'uploads', 'videos');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'data', 'uploads')));
 
 // Simple in-memory session store for admins
 interface AdminSession {
@@ -499,9 +508,54 @@ app.get('/api/admin/free-videos', requireAdmin, (req: Request, res: Response) =>
   res.json({ videos: db.getRaw().free_videos });
 });
 
+// Direct Video Upload (Strict max 30MB limit)
+app.post('/api/admin/free-videos/upload-direct', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { filename, base64Data, sizeBytes } = req.body;
+    if (!filename || !base64Data) {
+      return res.status(400).json({ error: 'Filename and video data are required' });
+    }
+
+    const maxSizeBytes = 30 * 1024 * 1024; // 30 MB
+    if (sizeBytes && sizeBytes > maxSizeBytes) {
+      return res.status(400).json({
+        error: 'حجم الفيديو يتجاوز 30MB! بالنسبة للفيديوهات التي تتجاوز 30MB، يرجى رفعها على سحابة تخزين (مثل Google Drive أو Mega) واختيار خيار (سحابة التخزين - رابط خارجي) لإضافة الرابط في الزر.'
+      });
+    }
+
+    const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
+    const buffer = Buffer.from(cleanBase64, 'base64');
+
+    if (buffer.length > maxSizeBytes) {
+      return res.status(400).json({
+        error: 'حجم الفيديو يتجاوز 30MB! بالنسبة للفيديوهات التي تتجاوز 30MB، يرجى رفعها على سحابة تخزين (مثل Google Drive أو Mega) واختيار خيار (سحابة التخزين - رابط خارجي).'
+      });
+    }
+
+    const ext = path.extname(filename) || '.mp4';
+    const safeFileName = `vid_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
+    const filePath = path.join(UPLOADS_DIR, safeFileName);
+
+    fs.writeFileSync(filePath, buffer);
+
+    const sizeMb = parseFloat((buffer.length / (1024 * 1024)).toFixed(2));
+    const url = `/uploads/videos/${safeFileName}`;
+
+    res.json({
+      success: true,
+      url,
+      sizeMb,
+      message: `تم رفع الفيديو المباشر بنجاح (${sizeMb} MB)`
+    });
+  } catch (err: any) {
+    console.error('[Upload Direct] Error:', err);
+    res.status(500).json({ error: 'Failed to upload video: ' + err.message });
+  }
+});
+
 app.post('/api/admin/free-videos', requireAdmin, async (req: Request, res: Response) => {
   const admin = (req as any).admin;
-  const { title, delivery_type, telegram_message_url, download_url, download_code, description, is_active, notify_users } = req.body;
+  const { title, delivery_type, direct_video_url, file_size_mb, telegram_message_url, download_url, download_code, description, is_active, notify_users } = req.body;
 
   if (!title || !delivery_type) {
     return res.status(400).json({ error: 'Title and Delivery Type are required' });
@@ -511,6 +565,8 @@ app.post('/api/admin/free-videos', requireAdmin, async (req: Request, res: Respo
     id: 'free_' + crypto.randomUUID().slice(0, 8),
     title,
     delivery_type,
+    direct_video_url: direct_video_url || '',
+    file_size_mb: file_size_mb || undefined,
     telegram_message_url: telegram_message_url || '',
     download_url: download_url || '',
     download_code: download_code || '',

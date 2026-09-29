@@ -753,11 +753,52 @@ export class TelegramBotService {
       let deliveryMsg = '';
       let replyMarkup: any = null;
 
-      if (video.delivery_type === 'EXTERNAL_CLOUD') {
-        deliveryMsg = `🎬 ${video.title}\n\n📥 Download Link: ${video.download_url}\n🔑 CODE: ${video.download_code || 'None'}\n\n${video.description || ''}\n\n⚠️ Copy and save your code. This message will be deleted after 10 minutes.`;
+      if (video.delivery_type === 'DIRECT_VIDEO') {
+        const videoUrl = video.direct_video_url || '';
+        const sizeInfo = video.file_size_mb ? ` (${video.file_size_mb} MB)` : '';
+        deliveryMsg = `🎬 ${video.title}${sizeInfo}\n\n${video.description || 'Enjoy your exclusive free video!'}\n\n⚠️ Direct access expires & deletes in 10 minutes.`;
         replyMarkup = {
           inline_keyboard: [
-            [{ text: '📥 DOWNLOAD', url: video.download_url || 'https://example.com' }]
+            [{ text: '▶️ WATCH / DOWNLOAD DIRECT VIDEO', url: videoUrl.startsWith('http') ? videoUrl : `https://${db.getRaw().bot_settings.store_url || 'etebox.com'}${videoUrl}` }]
+          ]
+        };
+
+        if (token) {
+          // Attempt direct video send if absolute URL
+          let sentOk = false;
+          if (videoUrl.startsWith('http')) {
+            try {
+              const vidRes = await this.apiCall(token, 'sendVideo', {
+                chat_id: chatId,
+                video: videoUrl,
+                caption: `🎬 ${video.title}\n\n⚠️ Auto-deleted in 10 minutes.`
+              });
+              if (vidRes.ok && vidRes.result?.message_id) {
+                await this.scheduleMessageDeletion(chatId, vidRes.result.message_id, 10 * 60 * 1000);
+                sentOk = true;
+              }
+            } catch (err) {
+              console.warn('[TelegramBot] sendVideo direct fallback to text:', err);
+            }
+          }
+
+          if (!sentOk) {
+            const sent = await this.apiCall(token, 'sendMessage', {
+              chat_id: chatId,
+              text: deliveryMsg,
+              reply_markup: replyMarkup
+            });
+            if (sent.ok && sent.result?.message_id) {
+              await this.scheduleMessageDeletion(chatId, sent.result.message_id, 10 * 60 * 1000);
+            }
+          }
+        }
+        return { text: deliveryMsg, replyMarkup };
+      } else if (video.delivery_type === 'EXTERNAL_CLOUD') {
+        deliveryMsg = `🎬 ${video.title}\n\n☁️ Cloud Storage Download Link:\n${video.download_url}\n\n🔑 ACCESS CODE: ${video.download_code || 'None'}\n\n${video.description || ''}\n\n⚠️ Copy and save your code. This link & message will be deleted after 10 minutes.`;
+        replyMarkup = {
+          inline_keyboard: [
+            [{ text: '☁️ DOWNLOAD FROM CLOUD', url: video.download_url || 'https://example.com' }]
           ]
         };
       } else {

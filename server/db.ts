@@ -123,7 +123,9 @@ export interface StarCode {
 export interface FreeVideo {
   id: string;
   title: string;
-  delivery_type: 'TELEGRAM_CHANNEL' | 'EXTERNAL_CLOUD';
+  delivery_type: 'DIRECT_VIDEO' | 'EXTERNAL_CLOUD' | 'TELEGRAM_CHANNEL';
+  direct_video_url?: string;
+  file_size_mb?: number;
   telegram_message_url?: string;
   download_url?: string;
   download_code?: string;
