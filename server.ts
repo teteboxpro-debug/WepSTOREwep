@@ -927,6 +927,10 @@ async function bootstrap() {
   });
 }
 
-bootstrap().catch((err) => {
-  console.error('[Etebox System] Fatal bootstrap error:', err);
-});
+if (!process.env.VERCEL) {
+  bootstrap().catch((err) => {
+    console.error('[Etebox System] Fatal bootstrap error:', err);
+  });
+}
+
+export default app;
