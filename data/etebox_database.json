@@ -68,6 +68,14 @@
   },
   "admin_logs": [
     {
+      "id": "7bd3d1a7-14b3-4990-87f1-eacbfb3b15ee",
+      "admin_username": "Abood",
+      "action": "BOT_ACTIVATION_FAILED",
+      "target": "Bot Engine",
+      "details": "Invalid token: Unauthorized",
+      "timestamp": "2026-09-29T14:09:46.170Z"
+    },
+    {
       "id": "526b5208-2bf0-418a-9bce-fbad7cec014b",
       "admin_username": "Abood",
       "action": "FREE_VIDEO_ADDED",
@@ -158,10 +166,11 @@
   "bot_settings": {
     "main_bot_token": "",
     "is_main_active": false,
-    "status": "offline",
+    "status": "token_invalid",
     "auto_notify_free_content": true,
     "store_url": "https://etebox.com/store",
-    "backup_bot_url": "https://t.me/EteboxBackupBot"
+    "backup_bot_url": "https://t.me/EteboxBackupBot",
+    "last_error": "Unauthorized"
   },
   "star_transactions": [
     {

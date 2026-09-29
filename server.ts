@@ -17,12 +17,31 @@ const isProd = process.env.NODE_ENV === 'production';
 app.use(express.json({ limit: '40mb' }));
 app.use(express.urlencoded({ extended: true, limit: '40mb' }));
 
+// Handle serverless pre-parsed or string body
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  if (typeof req.body === 'string') {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch {}
+  }
+  next();
+});
+
 // Static uploads serving for direct videos
-const UPLOADS_DIR = path.resolve(process.cwd(), 'data', 'uploads', 'videos');
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const isVercelEnv = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const UPLOADS_DIR = isVercelEnv
+  ? path.resolve('/tmp', 'etebox_uploads', 'videos')
+  : path.resolve(process.cwd(), 'data', 'uploads', 'videos');
+
+try {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+} catch (e) {
+  console.warn('[Server] Could not ensure UPLOADS_DIR:', e);
 }
-app.use('/uploads', express.static(path.resolve(process.cwd(), 'data', 'uploads')));
+
+app.use('/uploads', express.static(isVercelEnv ? path.resolve('/tmp', 'etebox_uploads') : path.resolve(process.cwd(), 'data', 'uploads')));
 
 // Simple in-memory session store for admins
 interface AdminSession {
@@ -227,64 +246,114 @@ app.get('/api/admin/bot/settings', requireAdmin, (req: Request, res: Response) =
 });
 
 app.post('/api/admin/bot/save-and-activate', requireAdmin, async (req: Request, res: Response) => {
-  const admin = (req as any).admin;
-  const { botToken, storeUrl, backupBotUrl, autoNotifyFreeContent } = req.body;
+  try {
+    const admin = (req as any).admin || { username: 'Abood' };
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const { botToken, storeUrl, backupBotUrl, autoNotifyFreeContent } = body;
 
-  let tokenToUse = (botToken || '').trim();
-  const currentSettings = db.getRaw().bot_settings;
+    let rawInput = (botToken || '').toString().trim();
+    // In case the user pasted the entire message from BotFather, extract the token
+    const tokenMatch = rawInput.match(/\b\d{8,11}:[A-Za-z0-9_-]{35}\b/);
+    let tokenToUse = tokenMatch ? tokenMatch[0] : rawInput.replace(/^["']|["']$/g, '').trim();
 
-  // If user didn't enter a new token and already has one, keep existing token
-  if (!tokenToUse && currentSettings.main_bot_token) {
-    tokenToUse = currentSettings.main_bot_token;
-  }
+    const currentSettings = db.getRaw().bot_settings;
 
-  if (!tokenToUse) {
-    return res.status(400).json({ error: 'Please enter a valid Bot Token' });
-  }
-
-  // Update configuration URLs
-  await db.atomic((d) => {
-    if (storeUrl !== undefined) d.bot_settings.store_url = storeUrl;
-    if (backupBotUrl !== undefined) d.bot_settings.backup_bot_url = backupBotUrl;
-    if (autoNotifyFreeContent !== undefined) d.bot_settings.auto_notify_free_content = Boolean(autoNotifyFreeContent);
-  });
-
-  // Activate bot
-  const result = await telegramBot.startBot(tokenToUse);
-  if (!result.success) {
-    await logAction(admin.username, 'BOT_ACTIVATION_FAILED', 'Bot Engine', `Failed: ${result.error}`);
-    return res.status(400).json({ error: result.error || 'Failed to connect to Telegram Bot API' });
-  }
-
-  // Auto-register Webhook if deployed on Vercel or any public host
-  const host = (req.get('x-forwarded-host') || req.get('host') || '').toLowerCase();
-  const isPublicOrVercel = host && !host.includes('localhost') && !host.includes('127.0.0.1');
-
-  let webhookConfigured = false;
-  if (isPublicOrVercel) {
-    const autoWebhookUrl = `https://${host}/api/telegram-webhook`;
-    console.log(`[Bot Engine] Automatically setting Telegram Webhook to: ${autoWebhookUrl}`);
-    try {
-      const hookRes = await telegramBot.setWebhook(tokenToUse, autoWebhookUrl);
-      if (hookRes.success) webhookConfigured = true;
-    } catch (err: any) {
-      console.warn('[Bot Engine] Auto-webhook warning:', err.message);
+    // If user didn't enter a new token and already has one, keep existing token
+    if (!tokenToUse && currentSettings.main_bot_token) {
+      tokenToUse = currentSettings.main_bot_token;
     }
+
+    if (!tokenToUse) {
+      return res.status(400).json({
+        error: 'يرجى إدخال توكن البوت الذي حصلت عليه من @BotFather (مثال: 1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ)'
+      });
+    }
+
+    // Format check (Telegram bot tokens are numbers followed by colon and hash)
+    if (!/^\d+:[A-Za-z0-9_-]+$/.test(tokenToUse)) {
+      return res.status(400).json({
+        error: 'صيغة توكن البوت غير صحيحة. يجب أن تتكون من أرقام المعرّف ثم نقطتين ثم الكود السري (مثال: 123456789:ABC...)'
+      });
+    }
+
+    // Update configuration URLs
+    await db.atomic((d) => {
+      if (storeUrl !== undefined) d.bot_settings.store_url = storeUrl;
+      if (backupBotUrl !== undefined) d.bot_settings.backup_bot_url = backupBotUrl;
+      if (autoNotifyFreeContent !== undefined) d.bot_settings.auto_notify_free_content = Boolean(autoNotifyFreeContent);
+    });
+
+    // Detect if running on Vercel or any public domain
+    const host = (req.get('x-forwarded-host') || req.get('host') || '').toLowerCase();
+    const isPublicOrVercel = Boolean(host && !host.includes('localhost') && !host.includes('127.0.0.1'));
+
+    // Step 1: Validate token directly with Telegram API
+    const validation = await telegramBot.validateToken(tokenToUse);
+    if (!validation.valid || !validation.user) {
+      await db.atomic((d) => {
+        d.bot_settings.status = 'token_invalid';
+        d.bot_settings.last_error = validation.error || 'Token validation failed';
+      });
+      await logAction(admin.username, 'BOT_ACTIVATION_FAILED', 'Bot Engine', `Invalid token: ${validation.error}`);
+      return res.status(400).json({
+        error: `توكن البوت غير صالح وفقاً لتيليجرام (${validation.error || 'Invalid token'}). تأكد من نسخه بدقة من @BotFather.`
+      });
+    }
+
+    let webhookConfigured = false;
+    let activationMessage = '';
+
+    if (isPublicOrVercel) {
+      // Step 2A (Public / Vercel Host): Configure Webhook directly
+      // Do NOT start long-polling, as long-polling causes 409 conflict and hangs serverless
+      const autoWebhookUrl = `https://${host}/api/telegram-webhook`;
+      console.log(`[Bot Engine] Public host detected (${host}). Setting Webhook: ${autoWebhookUrl}`);
+
+      try {
+        const hookRes = await telegramBot.setWebhook(tokenToUse, autoWebhookUrl);
+        webhookConfigured = hookRes.success;
+      } catch (hookErr: any) {
+        console.warn('[Bot Engine] Webhook configuration warning:', hookErr.message);
+      }
+
+      await db.atomic((d) => {
+        d.bot_settings.main_bot_token = tokenToUse;
+        d.bot_settings.is_main_active = true;
+        d.bot_settings.main_bot_username = validation.user.username;
+        d.bot_settings.main_bot_first_name = validation.user.first_name;
+        d.bot_settings.status = 'online';
+        d.bot_settings.last_error = undefined;
+      });
+
+      activationMessage = webhookConfigured
+        ? `✅ تم ربط البوت @${validation.user.username} وتفعيل الويب هوك بنجاح! جميع الأزرار تعمل الآن في التيليجرام.`
+        : `✅ تم تفعيل البوت @${validation.user.username} بنجاح!`;
+    } else {
+      // Step 2B (Localhost / VPS): Start long-polling
+      const result = await telegramBot.startBot(tokenToUse);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error || 'Failed to start bot polling' });
+      }
+      activationMessage = `✅ تم تفعيل البوت @${validation.user.username} بنجاح!`;
+    }
+
+    await logAction(admin.username, 'BOT_ACTIVATED', 'Bot Engine', `Activated @${validation.user.username}`);
+    const updatedSettings = db.getRaw().bot_settings;
+
+    res.json({
+      success: true,
+      message: activationMessage,
+      botUsername: updatedSettings.main_bot_username,
+      botFirstName: updatedSettings.main_bot_first_name,
+      status: 'online',
+      webhookConfigured
+    });
+  } catch (err: any) {
+    console.error('[Bot Engine] Unexpected error in save-and-activate:', err);
+    res.status(500).json({
+      error: `حدث خطأ أثناء تفعيل البوت: ${err.message || 'خطأ غير معروف في الخادم'}`
+    });
   }
-
-  await logAction(admin.username, 'BOT_ACTIVATED', 'Bot Engine', `Bot token activated${webhookConfigured ? ' with auto-webhook' : ''}`);
-  const updatedSettings = db.getRaw().bot_settings;
-
-  res.json({
-    success: true,
-    message: webhookConfigured
-      ? 'Bot Token activated and Webhook linked successfully! Buttons are now live!'
-      : 'Bot token successfully validated and activated!',
-    botUsername: updatedSettings.main_bot_username,
-    botFirstName: updatedSettings.main_bot_first_name,
-    status: updatedSettings.status,
-    webhookConfigured
-  });
 });
 
 app.post('/api/admin/bot/stop', requireAdmin, async (req: Request, res: Response) => {

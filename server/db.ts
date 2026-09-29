@@ -2,12 +2,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA_DIR = isVercel ? path.resolve('/tmp', 'etebox_data') : path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'etebox_database.json');
+const SEED_FILE = path.resolve(process.cwd(), 'data', 'etebox_database.json');
 
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// Ensure data directory exists safely
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (isVercel && fs.existsSync(SEED_FILE) && !fs.existsSync(DB_FILE)) {
+    fs.copyFileSync(SEED_FILE, DB_FILE);
+  }
+} catch (e) {
+  console.warn('[DB] Could not ensure DATA_DIR:', e);
 }
 
 // Password hashing helper using crypto.scrypt
@@ -419,6 +428,18 @@ class DatabaseManager {
         }
         return merged;
       }
+      if (isVercel && fs.existsSync(SEED_FILE)) {
+        const raw = fs.readFileSync(SEED_FILE, 'utf-8');
+        const parsed = JSON.parse(raw);
+        const defaults = getInitialDatabase();
+        const merged = {
+          ...defaults,
+          ...parsed,
+          bot_settings: { ...defaults.bot_settings, ...parsed.bot_settings }
+        };
+        this.saveSync(merged);
+        return merged;
+      }
     } catch (err) {
       console.error('[DB] Error loading database file, initializing defaults:', err);
     }
@@ -430,6 +451,9 @@ class DatabaseManager {
 
   private saveSync(dataToSave: DatabaseSchema) {
     try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
       const tempPath = `${DB_FILE}.tmp.${Date.now()}`;
       fs.writeFileSync(tempPath, JSON.stringify(dataToSave, null, 2), 'utf-8');
       fs.renameSync(tempPath, DB_FILE);
