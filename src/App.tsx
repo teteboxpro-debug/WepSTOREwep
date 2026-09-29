@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { apiRequest, getAuthToken, setAuthToken } from './api';
 import type { AdminUser, BotSettingsData } from './types';
 import Navbar from './components/Navbar';
@@ -133,6 +134,9 @@ export default function App() {
         botUsername={botUsername || 'EteboxBot'}
         botFirstName={botFirstName || 'ETEBOX Bot'}
       />
+
+      {/* Vercel Speed Insights */}
+      <SpeedInsights />
     </div>
   );
 }
