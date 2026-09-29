@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { apiRequest, clearAuthToken, getAuthToken } from './api';
+import { apiRequest } from './api';
 import type { AdminUser, BotSettingsData } from './types';
-import LoginView from './components/LoginView';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
@@ -17,48 +16,22 @@ import AdminLogsView from './components/AdminLogsView';
 import AdminAccountsView from './components/AdminAccountsView';
 import BotEmulatorModal from './components/BotEmulatorModal';
 
+const defaultAdmin: AdminUser = {
+  id: 'admin_initial',
+  username: 'Abood',
+  permissions: ['all']
+};
+
 export default function App() {
-  const [admin, setAdmin] = useState<AdminUser | null>(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [admin] = useState<AdminUser>(defaultAdmin);
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [botStatus, setBotStatus] = useState<'online' | 'offline' | 'token_invalid' | 'telegram_error'>('offline');
   const [botUsername, setBotUsername] = useState<string | undefined>();
   const [botFirstName, setBotFirstName] = useState<string | undefined>();
   const [emulatorOpen, setEmulatorOpen] = useState(false);
 
-  // Check existing session
-  useEffect(() => {
-    const checkSession = async () => {
-      const token = getAuthToken();
-      if (!token) {
-        setCheckingAuth(false);
-        return;
-      }
-
-      try {
-        const res = await apiRequest<{ admin: AdminUser }>('/admin/me');
-        setAdmin(res.admin);
-      } catch {
-        clearAuthToken();
-        setAdmin(null);
-      } finally {
-        setCheckingAuth(false);
-      }
-    };
-
-    checkSession();
-
-    const handleAuthExpired = () => {
-      setAdmin(null);
-    };
-    window.addEventListener('auth_expired', handleAuthExpired);
-    return () => window.removeEventListener('auth_expired', handleAuthExpired);
-  }, []);
-
   // Poll bot status
   useEffect(() => {
-    if (!admin) return;
-
     const fetchBotStatus = async () => {
       try {
         const res = await apiRequest<BotSettingsData>('/admin/bot/settings');
@@ -73,28 +46,7 @@ export default function App() {
     fetchBotStatus();
     const interval = setInterval(fetchBotStatus, 10000);
     return () => clearInterval(interval);
-  }, [admin]);
-
-  const handleLogout = async () => {
-    try {
-      await apiRequest('/admin/logout', { method: 'POST' });
-    } catch {}
-    clearAuthToken();
-    setAdmin(null);
-  };
-
-  if (checkingAuth) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400">
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
-        <span className="text-sm font-medium">Verifying Administrator Session...</span>
-      </div>
-    );
-  }
-
-  if (!admin) {
-    return <LoginView onSuccess={(authenticatedAdmin) => setAdmin(authenticatedAdmin)} />;
-  }
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased">
@@ -105,7 +57,7 @@ export default function App() {
         admin={admin}
         botStatus={botStatus}
         botUsername={botUsername}
-        onLogout={handleLogout}
+        onLogout={() => {}}
         onOpenEmulator={() => setEmulatorOpen(true)}
       />
 

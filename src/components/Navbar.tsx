@@ -11,7 +11,6 @@ import {
   Gamepad2,
   FileText,
   UserCheck,
-  LogOut,
   Smartphone,
   Menu,
   X
@@ -24,7 +23,7 @@ interface NavbarProps {
   admin: AdminUser;
   botStatus: 'online' | 'offline' | 'token_invalid' | 'telegram_error';
   botUsername?: string;
-  onLogout: () => void;
+  onLogout?: () => void;
   onOpenEmulator: () => void;
 }
 
@@ -130,20 +129,6 @@ export default function Navbar({
               <span className="hidden sm:inline">Bot Live Emulator</span>
               <span className="sm:hidden">Simulator</span>
             </button>
-
-            {/* Admin info & logout */}
-            <div className="flex items-center gap-2 border-l border-slate-800 pl-3">
-              <span className="hidden md:inline-block text-xs text-slate-300 font-medium">
-                {admin.username}
-              </span>
-              <button
-                onClick={onLogout}
-                className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
           </div>
         </div>
 
@@ -197,13 +182,6 @@ export default function Navbar({
               >
                 <Smartphone className="w-4 h-4" />
                 <span>Open Bot Simulator</span>
-              </button>
-              <button
-                onClick={onLogout}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-slate-800 text-rose-400 hover:bg-rose-500/10 rounded-xl text-sm font-medium"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Log Out</span>
               </button>
             </div>
           </div>

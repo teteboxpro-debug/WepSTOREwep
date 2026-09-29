@@ -311,14 +311,23 @@ export default function BotSettingsView() {
 
       {/* Token Input Form */}
       <form onSubmit={handleSaveAndActivate} className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-5">
-        <h3 className="font-semibold text-white text-base flex items-center gap-2">
-          <Key className="w-4 h-4 text-indigo-400" />
-          <span>Update Bot Token</span>
-        </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h3 className="font-semibold text-white text-base flex items-center gap-2">
+            <Key className="w-4 h-4 text-indigo-400" />
+            <span>Connect & Activate Telegram Bot (توكن البوت)</span>
+          </h3>
+          <span className="text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-lg">
+            ⚡ All-in-One: Activates Bot + Links Webhook + Enables Buttons
+          </span>
+        </div>
+
+        <div className="p-3.5 bg-indigo-600/10 border border-indigo-500/20 rounded-xl text-xs text-indigo-200">
+          💡 <strong>كل ما عليك فعله:</strong> الصق توكن البوت الذي حصلت عليه من <strong>@BotFather</strong> في الحقل أدناه واضغط <strong>Save & Activate Bot</strong>. سيقوم النظام تلقائياً بربط البوت وتفعيل الويب هوك وستعمل كافة الأزرار فوراً في التيليجرام!
+        </div>
 
         <div>
           <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase tracking-wider">
-            Main Bot Token
+            Telegram Bot Token
           </label>
           <div className="relative">
             <input

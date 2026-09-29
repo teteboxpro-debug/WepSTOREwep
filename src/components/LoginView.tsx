@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { apiRequest, setAuthToken } from '../api';
-import { ShieldCheck, Lock, User, AlertCircle, Bot } from 'lucide-react';
+import { ShieldCheck, Lock, User, AlertCircle, Bot, KeyRound } from 'lucide-react';
 import type { AdminUser } from '../types';
 
 interface LoginViewProps {
@@ -15,7 +15,10 @@ export default function LoginView({ onSuccess }: LoginViewProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) {
+    const cleanUsername = username.trim();
+    const cleanPassword = password.trim();
+
+    if (!cleanUsername || !cleanPassword) {
       setError('Please enter both username and password.');
       return;
     }
@@ -26,7 +29,7 @@ export default function LoginView({ onSuccess }: LoginViewProps) {
     try {
       const res = await apiRequest('/admin/login', {
         method: 'POST',
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username: cleanUsername, password: cleanPassword })
       });
 
       setAuthToken(res.token);
@@ -36,6 +39,12 @@ export default function LoginView({ onSuccess }: LoginViewProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fillDemoAdmin = () => {
+    setUsername('Abood');
+    setPassword('321325');
+    setError(null);
   };
 
   return (
@@ -57,6 +66,27 @@ export default function LoginView({ onSuccess }: LoginViewProps) {
             <span>{error}</span>
           </div>
         )}
+
+        {/* Default Admin Credentials Helper Card */}
+        <div className="mb-5 p-3.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Default Credentials (بيانات الدخول الافتراضية)</span>
+            </span>
+            <button
+              type="button"
+              onClick={fillDemoAdmin}
+              className="text-[11px] px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 rounded-lg font-medium border border-indigo-500/30 transition cursor-pointer"
+            >
+              تعبئة تلقائية (Auto-fill)
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-slate-300 font-mono text-[11px]">
+            <div>Username: <strong className="text-white">Abood</strong></div>
+            <div>Password: <strong className="text-white">321325</strong></div>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
