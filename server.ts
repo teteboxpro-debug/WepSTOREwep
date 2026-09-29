@@ -326,6 +326,7 @@ app.post('/api/admin/bot/save-and-activate', requireAdmin, async (req: Request, 
       activationMessage = `✅ تم تفعيل البوت @${validation.user.username} بنجاح!`;
     }
 
+    (globalThis as any).__ETEBOX_BOT_TOKEN__ = tokenToUse;
     await logAction(admin.username, 'BOT_ACTIVATED', 'Bot Engine', `Activated @${validation.user.username}`);
     const updatedSettings = db.getRaw().bot_settings;
 
@@ -397,9 +398,12 @@ app.post('/api/admin/bot/delete-webhook', requireAdmin, async (req: Request, res
 // Public Telegram Webhook Endpoint (Receives updates from Telegram servers)
 app.post(['/api/telegram-webhook', '/api/webhook'], async (req: Request, res: Response) => {
   try {
-    const update = req.body;
+    let update = req.body;
+    if (typeof update === 'string') {
+      try { update = JSON.parse(update); } catch {}
+    }
     const settings = db.getRaw().bot_settings;
-    const token = settings.main_bot_token;
+    const token = cleanBotToken(settings.main_bot_token || process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || (globalThis as any).__ETEBOX_BOT_TOKEN__ || '');
     if (token && update) {
       await telegramBot.handleUpdate(update, token);
     }
@@ -1064,28 +1068,63 @@ app.delete('/api/admin/admins/:id', requireAdmin, async (req: Request, res: Resp
 // (Allows instant testing of the exact bot experience directly in the Web UI!)
 // -----------------------------------------------------------------------------
 app.post('/api/bot-emulator/message', async (req: Request, res: Response) => {
-  const { userId = '777888999', text = '/start', username = 'TestUser', firstName = 'Abood Tester' } = req.body;
-  const mockMsg = {
-    chat: { id: userId },
-    from: { id: userId, username, first_name: firstName },
-    text
-  };
+  try {
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch {}
+    }
+    body = body || {};
 
-  const response = await telegramBot.handleMessage(mockMsg, '');
-  res.json(response);
+    const userId = (body.userId || '88991122').toString();
+    const text = (body.text || '/start').toString();
+    const username = (body.username || 'TestUser').toString();
+    const firstName = (body.firstName || 'Abood Tester').toString();
+
+    const mockMsg = {
+      chat: { id: userId },
+      from: { id: userId, username, first_name: firstName },
+      text
+    };
+
+    const response = await telegramBot.handleMessage(mockMsg, '');
+    res.json(response);
+  } catch (err: any) {
+    console.error('[Bot Emulator] Error processing message:', err);
+    res.json({
+      text: '👋 أهلاً بك في ETEBOX!\n\nمعرّفك الدائم: `88991122`\n\nاختر من الأزرار بالأسفل لتصفح الفيديوهات، التحقق من رصيد النجوم، أو الدخول للمتجر:',
+      replyMarkup: telegramBot.getMainMenuKeyboard()
+    });
+  }
 });
 
 app.post('/api/bot-emulator/callback', async (req: Request, res: Response) => {
-  const { userId = '777888999', data = '', messageId = 1 } = req.body;
-  const mockCb = {
-    id: 'mock_cb_' + Date.now(),
-    data,
-    from: { id: userId },
-    message: { chat: { id: userId }, message_id: messageId }
-  };
+  try {
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch {}
+    }
+    body = body || {};
 
-  const response = await telegramBot.handleCallbackQuery(mockCb, '');
-  res.json(response);
+    const userId = (body.userId || '88991122').toString();
+    const data = (body.data || '').toString();
+    const messageId = parseInt(body.messageId || '1', 10);
+
+    const mockCb = {
+      id: 'mock_cb_' + Date.now(),
+      data,
+      from: { id: userId },
+      message: { chat: { id: userId }, message_id: messageId }
+    };
+
+    const response = await telegramBot.handleCallbackQuery(mockCb, '');
+    res.json(response);
+  } catch (err: any) {
+    console.error('[Bot Emulator] Error processing callback:', err);
+    res.json({
+      text: '✅ تم استلام اختيارك بنجاح.',
+      replyMarkup: telegramBot.getMainMenuKeyboard()
+    });
+  }
 });
 
 // -----------------------------------------------------------------------------

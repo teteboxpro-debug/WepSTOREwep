@@ -16,6 +16,22 @@
       "referral_count": 1,
       "last_auto_reward_at": "2026-09-28T19:55:11.012Z"
     },
+    "88991122": {
+      "id": "88991122",
+      "username": "TestUser",
+      "first_name": "Abood Tester",
+      "balance": 3,
+      "total_earned": 3,
+      "total_spent": 0,
+      "registered_at": "2026-09-29T14:30:59.364Z",
+      "last_activity_at": "2026-09-29T14:31:21.681Z",
+      "verification_status": "verified",
+      "last_verification_at": "2026-09-29T14:30:59.364Z",
+      "failed_verification_attempts": 0,
+      "is_banned": false,
+      "referral_count": 0,
+      "last_auto_reward_at": "2026-09-29T14:30:59.365Z"
+    },
     "99887766": {
       "id": "99887766",
       "username": "TestUser",
@@ -67,6 +83,14 @@
     }
   },
   "admin_logs": [
+    {
+      "id": "a8ba2ba9-f167-401e-acf3-5ae166cec56d",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-09-29T14:17:10.417Z"
+    },
     {
       "id": "504bf37f-1910-4e89-b811-954a3a54d95f",
       "admin_username": "Abood",
@@ -269,6 +293,16 @@
       "type": "CHANNEL_UNLOCK",
       "description": "Unlocked Channel Access: VIP Private Channel",
       "timestamp": "2026-09-28T21:07:19.947Z"
+    },
+    {
+      "id": "3b68a55b-3edc-4f15-9e77-87b6bd271d9f",
+      "user_id": "88991122",
+      "amount": 3,
+      "balance_before": 0,
+      "balance_after": 3,
+      "type": "AUTO_REWARD",
+      "description": "8-Hour Auto Reward (+3 Stars)",
+      "timestamp": "2026-09-29T14:30:59.365Z"
     }
   ],
   "star_packages": [

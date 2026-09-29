@@ -530,12 +530,13 @@ export class TelegramBotService {
     // 3. Routing commands and button clicks
     const keyboard = this.getMainMenuKeyboard();
     const clean = text.trim();
+    const cleanLower = clean.toLowerCase();
 
     // Check code redemption command: /redeem CODE
-    if (clean.toLowerCase().startsWith('/redeem') || clean.toLowerCase().startsWith('redeem ')) {
-      const codePart = clean.replace(/^\/?redeem\s*/i, '').trim();
+    if (cleanLower.startsWith('/redeem') || cleanLower.startsWith('redeem ') || clean.startsWith('كود ') || clean.startsWith('شحن ')) {
+      const codePart = clean.replace(/^(\/?redeem|كود|شحن)\s*/i, '').trim();
       if (!codePart) {
-        const msg = 'ℹ️ To redeem a code, send:\n`/redeem YOUR_CODE`';
+        const msg = 'ℹ️ To redeem a code, send:\n`/redeem YOUR_CODE`\n\nأو أرسل: كود الكود_الخاص_بك';
         if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, parse_mode: 'Markdown' });
         return { text: msg };
       }
@@ -544,11 +545,17 @@ export class TelegramBotService {
       return { text: redeemRes.message };
     }
 
-    // Button 1: 🆓 FREE 1 VIDEOS
-    if (clean === '🆓 FREE 1 VIDEOS' || clean.includes('FREE 1 VIDEOS') || clean.toLowerCase() === '/free') {
+    // Button 1: 🆓 FREE 1 VIDEOS (or Arabic)
+    if (
+      clean === '🆓 FREE 1 VIDEOS' ||
+      clean.includes('FREE 1 VIDEOS') ||
+      cleanLower === '/free' ||
+      clean.includes('فيديو') ||
+      clean.includes('مجاني')
+    ) {
       const videos = db.getRaw().free_videos.filter((v) => v.is_active);
       if (videos.length === 0) {
-        const msg = '🆓 FREE 1 VIDEOS\n\nNo free videos available right now. Check back soon!';
+        const msg = '🆓 FREE 1 VIDEOS (فيديوهات مجانية)\n\nلا توجد فيديوهات مجانية متاحة حالياً. تفقد البوت لاحقاً!';
         if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: keyboard });
         return { text: msg, replyMarkup: keyboard };
       }
@@ -557,7 +564,7 @@ export class TelegramBotService {
         { text: v.title || '🎬 Free Video', callback_data: `free_vid_${v.id}` }
       ]);
 
-      const msg = `🆓 FREE 1 VIDEOS\n\nChoose an exclusive free video below:`;
+      const msg = `🆓 FREE 1 VIDEOS (فيديوهات مجانية)\n\nاختر الفيديو المجاني الذي ترغب بمشاهدته:`;
       if (token) {
         await this.apiCall(token, 'sendMessage', {
           chat_id: chatId,
@@ -568,13 +575,19 @@ export class TelegramBotService {
       return { text: msg, replyMarkup: { inline_keyboard: inlineButtons } };
     }
 
-    // Button 2: 💰 My Balance
-    if (clean === '💰 My Balance' || clean.includes('My Balance') || clean.toLowerCase() === '/balance') {
+    // Button 2: 💰 My Balance (or Arabic: 💰 رصيدي)
+    if (
+      clean === '💰 My Balance' ||
+      clean.includes('My Balance') ||
+      cleanLower === '/balance' ||
+      clean.includes('رصيدي') ||
+      clean.includes('رصيد')
+    ) {
       const refreshedUser = db.getRaw().users[userId] || user;
-      const msg = `💰 YOUR BALANCE\n\n⭐ Stars: ${refreshedUser.balance}\n\nTotal Earned: ${refreshedUser.total_earned}\nTotal Spent: ${refreshedUser.total_spent}\nReferrals: ${refreshedUser.referral_count}`;
+      const msg = `💰 YOUR BALANCE (رصيدك الحالي)\n\n⭐ Stars (النجوم): ${refreshedUser.balance}\n\nإجمالي المكتسب: ${refreshedUser.total_earned}\nإجمالي المصروف: ${refreshedUser.total_spent}\nعدد الإحالات: ${refreshedUser.referral_count}`;
       const inlineKeyboard = {
         inline_keyboard: [
-          [{ text: '⭐ Buy Stars', callback_data: 'nav_buy_stars' }, { text: '🔑 Redeem Code', callback_data: 'nav_redeem_prompt' }]
+          [{ text: '⭐ اشترِ النجوم (Buy Stars)', callback_data: 'nav_buy_stars' }, { text: '🔑 إدخال كود (Redeem Code)', callback_data: 'nav_redeem_prompt' }]
         ]
       };
       if (token) {
@@ -583,15 +596,22 @@ export class TelegramBotService {
       return { text: msg, replyMarkup: inlineKeyboard };
     }
 
-    // Button 3: ⭐ Buy Stars
-    if (clean === '⭐ Buy Stars' || clean.includes('Buy Stars') || clean.toLowerCase() === '/buy') {
+    // Button 3: ⭐ Buy Stars (or Arabic: ⭐ اشترِ النجوم)
+    if (
+      clean === '⭐ Buy Stars' ||
+      clean.includes('Buy Stars') ||
+      cleanLower === '/buy' ||
+      clean.includes('اشترِ النجوم') ||
+      clean.includes('شراء النجوم') ||
+      clean.includes('اشتر النجوم')
+    ) {
       const packages = db.getRaw().star_packages.filter((p) => p.is_active);
       const packageButtons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = packages.map((pkg) => [
         { text: `${pkg.name} — $${pkg.price_usd}`, url: pkg.payment_url }
       ]);
-      packageButtons.push([{ text: '🔑 Enter Stars Code', callback_data: 'nav_redeem_prompt' }]);
+      packageButtons.push([{ text: '🔑 إدخال كود النجوم', callback_data: 'nav_redeem_prompt' }]);
 
-      const msg = `⭐ BUY STARS\n\nChoose a package below to add internal Stars to your balance:\n\n*(Note: These are internal application points. They cannot be converted to cash or transferred outside the app.)*`;
+      const msg = `⭐ BUY STARS (شراء النجوم)\n\nاختر الباقة المناسبة لشحن رصيد النجوم في حسابك:\n\n*(تنويه: هذه نقاط داخلية داخل التطبيق ولا يمكن تحويلها لأموال نقدية خارج التطبيق.)*`;
       if (token) {
         await this.apiCall(token, 'sendMessage', {
           chat_id: chatId,
@@ -603,11 +623,17 @@ export class TelegramBotService {
       return { text: msg, replyMarkup: { inline_keyboard: packageButtons } };
     }
 
-    // Button 4: 📺 Channels
-    if (clean === '📺 Channels' || clean.includes('Channels') || clean.toLowerCase() === '/channels') {
+    // Button 4: 📺 Channels (or Arabic: 📺 القنوات)
+    if (
+      clean === '📺 Channels' ||
+      clean.includes('Channels') ||
+      cleanLower === '/channels' ||
+      clean.includes('القنوات') ||
+      clean.includes('قنوات')
+    ) {
       const channels = db.getRaw().channels.filter((c) => c.is_active).sort((a, b) => a.display_order - b.display_order);
       if (channels.length === 0) {
-        const msg = '📺 Channels\n\nNo official channels configured.';
+        const msg = '📺 Channels (القنوات)\n\nلا توجد قنوات رسمية مضافة حالياً.';
         if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: keyboard });
         return { text: msg, replyMarkup: keyboard };
       }
@@ -618,15 +644,15 @@ export class TelegramBotService {
       const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = channels.map((c) => {
         const reqStars = typeof c.required_stars === 'number' ? c.required_stars : 0;
         if (reqStars <= 0) {
-          return [{ text: `📢 ${c.name} (Free)`, url: c.url }];
+          return [{ text: `📢 ${c.name} (مجاني)`, url: c.url }];
         } else if (unlockedSet.has(c.id)) {
-          return [{ text: `🔓 ${c.name} (Unlocked)`, url: c.url }];
+          return [{ text: `🔓 ${c.name} (مفتوح)`, url: c.url }];
         } else {
           return [{ text: `🔒 ${c.name} — ⭐ ${reqStars}`, callback_data: `chan_view_${c.id}` }];
         }
       });
 
-      const msg = `📺 OFFICIAL CHANNELS\n\nSelect a channel below to join or unlock with Stars:`;
+      const msg = `📺 OFFICIAL CHANNELS (القنوات الرسمية)\n\nاختر قناة للانضمام أو فتحها باستخدام النجوم:`;
       if (token) {
         await this.apiCall(token, 'sendMessage', {
           chat_id: chatId,
@@ -637,11 +663,17 @@ export class TelegramBotService {
       return { text: msg, replyMarkup: { inline_keyboard: buttons } };
     }
 
-    // Button 5: 📁 Files
-    if (clean === '📁 Files' || clean.includes('Files') || clean.toLowerCase() === '/files') {
+    // Button 5: 📁 Files (or Arabic: 📁 الملفات)
+    if (
+      clean === '📁 Files' ||
+      clean.includes('Files') ||
+      cleanLower === '/files' ||
+      clean.includes('الملفات') ||
+      clean.includes('ملفات')
+    ) {
       const files = db.getRaw().files.filter((f) => f.is_active);
       if (files.length === 0) {
-        const msg = '📁 FILES\n\nNo files available in the catalog right now.';
+        const msg = '📁 FILES (الملفات)\n\nلا توجد ملفات مدفوعة متاحة في الكتالوج حالياً.';
         if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: keyboard });
         return { text: msg, replyMarkup: keyboard };
       }
@@ -650,7 +682,7 @@ export class TelegramBotService {
         { text: `🎬 ${f.file_name} — ⭐ ${f.price_stars}`, callback_data: `file_detail_${f.id}` }
       ]);
 
-      const msg = `📁 PREMIUM FILES\n\nSelect a file below to view sample or purchase:`;
+      const msg = `📁 PREMIUM FILES (الملفات الحصرية)\n\nاختر ملفاً لعرض العينة أو شرائه بالنجوم:`;
       if (token) {
         await this.apiCall(token, 'sendMessage', {
           chat_id: chatId,
@@ -661,12 +693,18 @@ export class TelegramBotService {
       return { text: msg, replyMarkup: { inline_keyboard: buttons } };
     }
 
-    // Button 6: 🛒 Enter Store
-    if (clean === '🛒 Enter Store' || clean.includes('Enter Store') || clean.toLowerCase() === '/store') {
+    // Button 6: 🛒 Enter Store (or Arabic: 🛒 ادخل المتجر)
+    if (
+      clean === '🛒 Enter Store' ||
+      clean.includes('Enter Store') ||
+      cleanLower === '/store' ||
+      clean.includes('المتجر') ||
+      clean.includes('متجر')
+    ) {
       const storeUrl = db.getRaw().bot_settings.store_url || 'https://etebox.com/store';
-      const msg = `🛒 ENTER STORE\n\nClick below to open our official store:`;
+      const msg = `🛒 ENTER STORE (المتجر الرسمي)\n\nاضغط على الزر أدناه للدخول إلى المتجر:`;
       const markup = {
-        inline_keyboard: [[{ text: '🛒 Open Store', url: storeUrl }]]
+        inline_keyboard: [[{ text: '🛒 فتح المتجر', url: storeUrl }]]
       };
       if (token) {
         await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
@@ -674,12 +712,18 @@ export class TelegramBotService {
       return { text: msg, replyMarkup: markup };
     }
 
-    // Button 7: 🔄 Backup Bot
-    if (clean === '🔄 Backup Bot' || clean.includes('Backup Bot') || clean.toLowerCase() === '/backup') {
+    // Button 7: 🔄 Backup Bot (or Arabic: 🔄 بوت النسخ الاحتياطي)
+    if (
+      clean === '🔄 Backup Bot' ||
+      clean.includes('Backup Bot') ||
+      cleanLower === '/backup' ||
+      clean.includes('الاحتياطي') ||
+      clean.includes('احتياطي')
+    ) {
       const backupUrl = db.getRaw().bot_settings.backup_bot_url || 'https://t.me/EteboxBackupBot';
-      const msg = `🔄 BACKUP BOT\n\nIn case this bot experiences maintenance, join our Backup Bot to access all your balances, purchases, and files:`;
+      const msg = `🔄 BACKUP BOT (بوت النسخ الاحتياطي)\n\nفي حال صيانة هذا البوت، يمكنك استخدام البوت الاحتياطي للوصول لكافة نقاطك ومشترياتك:`;
       const markup = {
-        inline_keyboard: [[{ text: '🔄 Open Backup Bot', url: backupUrl }]]
+        inline_keyboard: [[{ text: '🔄 فتح البوت الاحتياطي', url: backupUrl }]]
       };
       if (token) {
         await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
@@ -687,26 +731,40 @@ export class TelegramBotService {
       return { text: msg, replyMarkup: markup };
     }
 
-    // Button 8: 👥 Refer & Earn
-    if (clean === '👥 Refer & Earn' || clean.includes('Refer & Earn') || clean.toLowerCase() === '/refer') {
+    // Button 8: 👥 Refer & Earn (or Arabic: 👥 اربح من خلال الإحالة)
+    if (
+      clean === '👥 Refer & Earn' ||
+      clean.includes('Refer & Earn') ||
+      cleanLower === '/refer' ||
+      clean.includes('الإحالة') ||
+      clean.includes('احالة') ||
+      clean.includes('اربح من خلال')
+    ) {
       const botUsername = db.getRaw().bot_settings.main_bot_username || 'YOUR_BOT';
       const refLink = `https://t.me/${botUsername}?start=ref_${userId}`;
       const refreshed = db.getRaw().users[userId] || user;
-      const msg = `👥 REFER & EARN\n\nInvite your friends and earn Stars!\n\nYour Referral Link:\n${refLink}\n\nSuccessful Referrals:\n${refreshed.referral_count}\n\nStars Earned:\n${refreshed.referral_count * 10} Stars\n\n*(Rules: +10 Stars per verified referral friend. Self-referral is forbidden.)*`;
+      const msg = `👥 REFER & EARN (نظام الإحالات)\n\nشارك رابطك مع أصدقائك واكسب النجوم مجاناً!\n\nرابط الإحالة الخاص بك:\n${refLink}\n\nالإحالات الناجحة: ${refreshed.referral_count}\nالنجوم المكتسبة: ${refreshed.referral_count * 10} نجمة ⭐\n\n*(تكسب +10 نجوم عن كل صديق ينضم عبر رابطك)*`;
       if (token) {
         await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: keyboard });
       }
       return { text: msg, replyMarkup: keyboard };
     }
 
-    // Button 9: 🎮 Games
-    if (clean === '🎮 Games' || clean.includes('Games') || clean.toLowerCase() === '/games') {
-      const msg = `🎮 GAMES\n\nPlay fun games & claim achievements (non-wagering):\n\nChoose a game:`;
+    // Button 9: 🎮 Games (or Arabic: 🎮 ألعاب)
+    if (
+      clean === '🎮 Games' ||
+      clean.includes('Games') ||
+      cleanLower === '/games' ||
+      clean.includes('ألعاب') ||
+      clean.includes('العاب') ||
+      clean.includes('لعبة')
+    ) {
+      const msg = `🎮 GAMES (الألعاب والجوائز)\n\nاختر لعبة وجرّب حظك لربح نجوم إضافية:\n\nاختر لعبة أدناه:`;
       const markup = {
         inline_keyboard: [
-          [{ text: '🎲 Lucky Dice', callback_data: 'game_dice' }],
-          [{ text: '📦 Mystery Box', callback_data: 'game_box' }],
-          [{ text: '🎡 Lucky Wheel', callback_data: 'game_wheel' }]
+          [{ text: '🎲 نرد الحظ (Lucky Dice)', callback_data: 'game_dice' }],
+          [{ text: '📦 الصندوق السحري (Mystery Box)', callback_data: 'game_box' }],
+          [{ text: '🎡 عجلة الحظ (Lucky Wheel)', callback_data: 'game_wheel' }]
         ]
       };
       if (token) {
@@ -715,8 +773,8 @@ export class TelegramBotService {
       return { text: msg, replyMarkup: markup };
     }
 
-    // Default /start or welcome
-    const welcome = `👋 Welcome to ETEBOX!\n\nYour permanent ID: \`${userId}\`\n\nUse the menu buttons below to browse videos, manage your Stars, and download files.`;
+    // Default /start or welcome (or Arabic /يبدأ أو بدء أو ابدأ)
+    const welcome = `👋 أهلاً بك في ETEBOX!\n\nمعرّفك الدائم: \`${userId}\`\n\nاستخدم أزرار القائمة بالأسفل لتصفح الفيديوهات، متابعة رصيدك من النجوم، وتحميل الملفات:`;
     if (token) {
       await this.apiCall(token, 'sendMessage', {
         chat_id: chatId,
