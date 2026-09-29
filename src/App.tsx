@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { apiRequest } from './api';
+import { apiRequest, getAuthToken, setAuthToken } from './api';
 import type { AdminUser, BotSettingsData } from './types';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
@@ -23,12 +23,37 @@ const defaultAdmin: AdminUser = {
 };
 
 export default function App() {
-  const [admin] = useState<AdminUser>(defaultAdmin);
+  const [admin, setAdmin] = useState<AdminUser>(defaultAdmin);
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [botStatus, setBotStatus] = useState<'online' | 'offline' | 'token_invalid' | 'telegram_error'>('offline');
   const [botUsername, setBotUsername] = useState<string | undefined>();
   const [botFirstName, setBotFirstName] = useState<string | undefined>();
   const [emulatorOpen, setEmulatorOpen] = useState(false);
+
+  // Background silent auto-login for user 'Abood' (password: '321325')
+  // Automatically establishes authenticated session and stores bearer token
+  // without displaying any login screen or password prompt in the UI
+  useEffect(() => {
+    const performSilentLogin = async () => {
+      try {
+        const token = getAuthToken();
+        if (!token) {
+          const res = await apiRequest<{ token: string; admin: AdminUser }>('/admin/login', {
+            method: 'POST',
+            body: JSON.stringify({ username: 'Abood', password: '321325' })
+          });
+          if (res.token) {
+            setAuthToken(res.token);
+            if (res.admin) setAdmin(res.admin);
+          }
+        }
+      } catch (err) {
+        console.warn('[Silent Auth] Running with direct session');
+      }
+    };
+
+    performSilentLogin();
+  }, []);
 
   // Poll bot status
   useEffect(() => {

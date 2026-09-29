@@ -68,6 +68,22 @@
   },
   "admin_logs": [
     {
+      "id": "504bf37f-1910-4e89-b811-954a3a54d95f",
+      "admin_username": "Abood",
+      "action": "BOT_ACTIVATION_FAILED",
+      "target": "Bot Engine",
+      "details": "Invalid token: التوكن غير مصرح به (Unauthorized). تأكد من صحة التوكن من @BotFather دون تعديل.",
+      "timestamp": "2026-09-29T14:16:52.708Z"
+    },
+    {
+      "id": "29c40acc-ed88-46a0-aace-45aac55c0170",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-09-29T14:16:50.438Z"
+    },
+    {
       "id": "7bd3d1a7-14b3-4990-87f1-eacbfb3b15ee",
       "admin_username": "Abood",
       "action": "BOT_ACTIVATION_FAILED",
@@ -170,7 +186,7 @@
     "auto_notify_free_content": true,
     "store_url": "https://etebox.com/store",
     "backup_bot_url": "https://t.me/EteboxBackupBot",
-    "last_error": "Unauthorized"
+    "last_error": "التوكن غير مصرح به (Unauthorized). تأكد من صحة التوكن من @BotFather دون تعديل."
   },
   "star_transactions": [
     {

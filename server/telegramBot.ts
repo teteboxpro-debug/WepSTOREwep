@@ -1,6 +1,34 @@
 import { db, User, FreeVideo, PaidFile } from './db.js';
 import crypto from 'node:crypto';
 
+// Cleans bot token of any mobile copy-paste artifacts:
+// - Removes invisible Unicode formatting characters (LTR/RTL markers, zero-width spaces, BOM)
+// - Normalizes Eastern/Arabic-Indic digits to Latin digits
+// - Extracts the actual token if the user pasted the entire message from BotFather
+export function cleanBotToken(input: string): string {
+  if (!input) return '';
+  let str = input.toString();
+
+  // Convert Arabic-Indic numerals (٠-٩) and Persian numerals (۰-۹) to standard digits (0-9)
+  str = str.replace(/[٠-٩]/g, (d) => (d.charCodeAt(0) - 1632).toString());
+  str = str.replace(/[۰-۹]/g, (d) => (d.charCodeAt(0) - 1776).toString());
+
+  // Remove invisible formatting and unicode control characters
+  str = str.replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u202A-\u202E\u00A0\r\n\t]/g, '');
+
+  // Strip wrapping quotes, brackets or symbols
+  str = str.replace(/^["'`<(\[]+|["'`>)\]]+$/g, '').trim();
+
+  // Extract token if embedded in text (e.g. from BotFather text: "Use this token to access...")
+  const match = str.match(/\b(\d{8,12}:[A-Za-z0-9_-]{30,50})\b/);
+  if (match) {
+    return match[1].trim();
+  }
+
+  // Remove remaining spaces
+  return str.replace(/\s+/g, '');
+}
+
 // Telegram API Helper
 export class TelegramBotService {
   private pollingActive = false;
@@ -14,15 +42,26 @@ export class TelegramBotService {
 
   // Telegram API request wrapper with markdown fallback and error resilience
   public async apiCall(token: string, method: string, payload: Record<string, any> = {}): Promise<any> {
-    const url = `https://api.telegram.org/bot${token}/${method}`;
+    const cleanToken = cleanBotToken(token);
+    if (!cleanToken) {
+      return { ok: false, error: 'Empty bot token' };
+    }
+
+    const url = `https://api.telegram.org/bot${cleanToken}/${method}`;
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
 
-      const data = await res.json();
+      clearTimeout(timeoutId);
+
+      const data = await res.json().catch(() => ({ ok: false, description: 'Invalid response from Telegram API' }));
       if (!data.ok) {
         console.warn(`[Telegram API] ${method} error response:`, data.description || data);
         // If Markdown formatting failed, retry sending as plain text
@@ -34,39 +73,55 @@ export class TelegramBotService {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(fallback)
           });
-          return await retryRes.json();
+          return await retryRes.json().catch(() => data);
         }
       }
       return data;
     } catch (err: any) {
       console.error(`[Telegram API] Network error in ${method}:`, err.message);
-      return { ok: false, error: err.message };
+      return { ok: false, error: err.name === 'AbortError' ? 'Telegram request timed out' : err.message };
     }
   }
 
   // Validate bot token
   public async validateToken(token: string): Promise<{ valid: boolean; user?: any; error?: string }> {
+    const cleanToken = cleanBotToken(token);
+    if (!cleanToken) {
+      return { valid: false, error: 'يرجى كتابة أو لصق توكن البوت' };
+    }
+
     try {
-      const res = await this.apiCall(token.trim(), 'getMe');
+      const res = await this.apiCall(cleanToken, 'getMe');
       if (res.ok && res.result?.is_bot) {
         return { valid: true, user: res.result };
       }
-      return { valid: false, error: res.description || 'Invalid Bot Token' };
+      const desc = res.description || res.error || '';
+      if (desc.toLowerCase().includes('unauthorized')) {
+        return { valid: false, error: 'التوكن غير مصرح به (Unauthorized). تأكد من صحة التوكن من @BotFather دون تعديل.' };
+      }
+      if (desc.toLowerCase().includes('not found')) {
+        return { valid: false, error: 'التوكن غير موجود لدى سيرفرات تيليجرام (Not Found). تأكد من نسخ كامل التوكن.' };
+      }
+      return { valid: false, error: desc || 'توكن البوت غير صالح' };
     } catch (err: any) {
-      return { valid: false, error: err.message || 'Network connection failed' };
+      return { valid: false, error: err.message || 'تعذر الاتصال بسيرفر تيليجرام' };
     }
   }
 
   // Webhook helpers for cloud/Vercel environments
   public async getWebhookInfo(token: string): Promise<any> {
-    const res = await this.apiCall(token.trim(), 'getWebhookInfo');
+    const cleanToken = cleanBotToken(token);
+    const res = await this.apiCall(cleanToken, 'getWebhookInfo');
     return res.result;
   }
 
   public async setWebhook(token: string, webhookUrl: string): Promise<{ success: boolean; description?: string }> {
     this.stopBot();
-    const res = await this.apiCall(token.trim(), 'setWebhook', {
-      url: webhookUrl.trim(),
+    const cleanToken = cleanBotToken(token);
+    const cleanUrl = webhookUrl.trim();
+    const res = await this.apiCall(cleanToken, 'setWebhook', {
+      url: cleanUrl,
+      drop_pending_updates: false,
       allowed_updates: ['message', 'callback_query']
     });
 
@@ -77,7 +132,7 @@ export class TelegramBotService {
       });
       return { success: true, description: res.description || 'Webhook registered successfully' };
     }
-    return { success: false, description: res.description || 'Failed to set webhook' };
+    return { success: false, description: res.description || res.error || 'Failed to set webhook' };
   }
 
   public async deleteWebhook(token: string): Promise<{ success: boolean; description?: string }> {

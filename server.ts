@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import { db, hashPassword, verifyPassword } from './server/db.js';
-import { telegramBot } from './server/telegramBot.js';
+import { telegramBot, cleanBotToken } from './server/telegramBot.js';
 
 dotenv.config();
 
@@ -251,28 +251,17 @@ app.post('/api/admin/bot/save-and-activate', requireAdmin, async (req: Request, 
     const body = (req.body && typeof req.body === 'object') ? req.body : {};
     const { botToken, storeUrl, backupBotUrl, autoNotifyFreeContent } = body;
 
-    let rawInput = (botToken || '').toString().trim();
-    // In case the user pasted the entire message from BotFather, extract the token
-    const tokenMatch = rawInput.match(/\b\d{8,11}:[A-Za-z0-9_-]{35}\b/);
-    let tokenToUse = tokenMatch ? tokenMatch[0] : rawInput.replace(/^["']|["']$/g, '').trim();
-
+    let tokenToUse = cleanBotToken(botToken || '');
     const currentSettings = db.getRaw().bot_settings;
 
     // If user didn't enter a new token and already has one, keep existing token
     if (!tokenToUse && currentSettings.main_bot_token) {
-      tokenToUse = currentSettings.main_bot_token;
+      tokenToUse = cleanBotToken(currentSettings.main_bot_token);
     }
 
     if (!tokenToUse) {
       return res.status(400).json({
         error: 'يرجى إدخال توكن البوت الذي حصلت عليه من @BotFather (مثال: 1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ)'
-      });
-    }
-
-    // Format check (Telegram bot tokens are numbers followed by colon and hash)
-    if (!/^\d+:[A-Za-z0-9_-]+$/.test(tokenToUse)) {
-      return res.status(400).json({
-        error: 'صيغة توكن البوت غير صحيحة. يجب أن تتكون من أرقام المعرّف ثم نقطتين ثم الكود السري (مثال: 123456789:ABC...)'
       });
     }
 

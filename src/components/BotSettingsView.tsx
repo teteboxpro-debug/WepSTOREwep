@@ -11,7 +11,9 @@ import {
   PowerOff,
   Globe,
   Radio,
-  Zap
+  Zap,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import type { BotSettingsData } from '../types';
 
@@ -20,6 +22,7 @@ export default function BotSettingsView() {
   const [webhookInfo, setWebhookInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tokenInput, setTokenInput] = useState('');
+  const [showToken, setShowToken] = useState(false);
   const [storeUrl, setStoreUrl] = useState('');
   const [backupBotUrl, setBackupBotUrl] = useState('');
   const [autoNotify, setAutoNotify] = useState(true);
@@ -342,15 +345,23 @@ export default function BotSettingsView() {
           </label>
           <div className="relative">
             <input
-              type="password"
+              type={showToken ? 'text' : 'password'}
               value={tokenInput}
               onChange={(e) => setTokenInput(e.target.value)}
               placeholder={settings?.hasToken ? 'Enter new token to replace, or leave blank to keep' : 'e.g. 1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ'}
-              className="w-full px-4 py-2.5 bg-slate-950/80 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm font-mono"
+              className="w-full pl-4 pr-11 py-2.5 bg-slate-950/80 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm font-mono"
             />
+            <button
+              type="button"
+              onClick={() => setShowToken(!showToken)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-200 transition cursor-pointer"
+              title={showToken ? 'Hide Token' : 'Show Token'}
+            >
+              {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
           </div>
           <p className="text-[11px] text-slate-500 mt-1.5">
-            Get your token from @BotFather on Telegram. The token is never exposed to frontend clients and is stored securely server-side.
+            احصل على التوكن من @BotFather في التيليجرام. يمكنك الضغط على أيقونة العين للتأكد من صحة التوكن الملصوق قبل الحفظ.
           </p>
         </div>
 
