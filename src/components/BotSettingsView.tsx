@@ -8,12 +8,16 @@ import {
   ExternalLink,
   ShieldCheck,
   RefreshCw,
-  PowerOff
+  PowerOff,
+  Globe,
+  Radio,
+  Zap
 } from 'lucide-react';
 import type { BotSettingsData } from '../types';
 
 export default function BotSettingsView() {
   const [settings, setSettings] = useState<BotSettingsData | null>(null);
+  const [webhookInfo, setWebhookInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tokenInput, setTokenInput] = useState('');
   const [storeUrl, setStoreUrl] = useState('');
@@ -29,6 +33,13 @@ export default function BotSettingsView() {
       setStoreUrl(data.storeUrl);
       setBackupBotUrl(data.backupBotUrl);
       setAutoNotify(data.autoNotifyFreeContent);
+
+      if (data.hasToken) {
+        try {
+          const hookRes = await apiRequest('/admin/bot/webhook-info');
+          setWebhookInfo(hookRes.info);
+        } catch {}
+      }
     } catch (err: any) {
       console.error('Error loading bot settings:', err);
     } finally {
@@ -39,6 +50,38 @@ export default function BotSettingsView() {
   useEffect(() => {
     fetchSettings();
   }, []);
+
+  const handleSetWebhook = async (urlToSet?: string) => {
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const targetUrl = urlToSet || `${window.location.origin}/api/telegram-webhook`;
+      const res = await apiRequest('/admin/bot/set-webhook', {
+        method: 'POST',
+        body: JSON.stringify({ webhookUrl: targetUrl })
+      });
+      setMessage({ type: 'success', text: res.message || 'Webhook successfully set!' });
+      await fetchSettings();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to set webhook' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteWebhook = async () => {
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await apiRequest('/admin/bot/delete-webhook', { method: 'POST' });
+      setMessage({ type: 'success', text: res.message || 'Switched to Long Polling!' });
+      await fetchSettings();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to switch to polling' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleSaveAndActivate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,6 +243,71 @@ export default function BotSettingsView() {
           </div>
         )}
       </div>
+
+      {/* Webhook & Cloud Deployment Card (Essential for Vercel & Serverless) */}
+      {settings?.hasToken && (
+        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400">
+                <Globe className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-sm">Telegram Connection Mode (Webhook vs Polling)</h3>
+                <p className="text-[11px] text-slate-400">
+                  Vercel & serverless platforms require a Webhook so Telegram pushes updates directly to the app.
+                </p>
+              </div>
+            </div>
+
+            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+              webhookInfo?.url
+                ? 'bg-teal-500/10 text-teal-300 border border-teal-500/30'
+                : 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/30'
+            }`}>
+              {webhookInfo?.url ? '⚡ Webhook Active' : '🔄 Long Polling Active'}
+            </span>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 font-mono space-y-1">
+              <div className="text-slate-400 font-sans">
+                <strong>Active Telegram Webhook URL:</strong>
+              </div>
+              <div className="text-indigo-300 truncate">
+                {webhookInfo?.url || 'None (Bot is receiving updates via internal Long Polling)'}
+              </div>
+              {webhookInfo?.last_error_message && (
+                <div className="text-rose-400 pt-1">
+                  <strong>Telegram Webhook Error:</strong> {webhookInfo.last_error_message}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => handleSetWebhook()}
+                disabled={submitting}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-medium transition cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Activate Webhook on Current App Domain</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeleteWebhook}
+                disabled={submitting}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium transition cursor-pointer"
+              >
+                <Radio className="w-3.5 h-3.5" />
+                <span>Switch to Long Polling</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Token Input Form */}
       <form onSubmit={handleSaveAndActivate} className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-5">

@@ -262,6 +262,59 @@ app.post('/api/admin/bot/stop', requireAdmin, async (req: Request, res: Response
   res.json({ success: true, status: 'offline' });
 });
 
+// Telegram Webhook Management
+app.get('/api/admin/bot/webhook-info', requireAdmin, async (_req: Request, res: Response) => {
+  const token = db.getRaw().bot_settings.main_bot_token;
+  if (!token) return res.status(400).json({ error: 'No bot token configured' });
+  const info = await telegramBot.getWebhookInfo(token);
+  res.json({ info });
+});
+
+app.post('/api/admin/bot/set-webhook', requireAdmin, async (req: Request, res: Response) => {
+  const admin = (req as any).admin;
+  const { webhookUrl } = req.body;
+  const token = db.getRaw().bot_settings.main_bot_token;
+  if (!token) return res.status(400).json({ error: 'No bot token configured' });
+  if (!webhookUrl) return res.status(400).json({ error: 'Webhook URL is required' });
+
+  const result = await telegramBot.setWebhook(token, webhookUrl);
+  if (!result.success) {
+    return res.status(400).json({ error: result.description });
+  }
+
+  await logAction(admin.username, 'WEBHOOK_SET', 'Telegram Bot', `Webhook set to ${webhookUrl}`);
+  res.json({ success: true, message: result.description });
+});
+
+app.post('/api/admin/bot/delete-webhook', requireAdmin, async (req: Request, res: Response) => {
+  const admin = (req as any).admin;
+  const token = db.getRaw().bot_settings.main_bot_token;
+  if (!token) return res.status(400).json({ error: 'No bot token configured' });
+
+  const result = await telegramBot.deleteWebhook(token);
+  if (!result.success) {
+    return res.status(400).json({ error: result.description });
+  }
+
+  await logAction(admin.username, 'WEBHOOK_DELETED', 'Telegram Bot', 'Switched to Long Polling');
+  res.json({ success: true, message: result.description });
+});
+
+// Public Telegram Webhook Endpoint (Receives updates from Telegram servers)
+app.post(['/api/telegram-webhook', '/api/webhook'], async (req: Request, res: Response) => {
+  try {
+    const update = req.body;
+    const settings = db.getRaw().bot_settings;
+    const token = settings.main_bot_token;
+    if (token && update) {
+      await telegramBot.handleUpdate(update, token);
+    }
+  } catch (err: any) {
+    console.error('[Telegram Webhook] Error processing update:', err.message);
+  }
+  res.status(200).json({ ok: true });
+});
+
 // -----------------------------------------------------------------------------
 // 4. USER MANAGEMENT
 // -----------------------------------------------------------------------------

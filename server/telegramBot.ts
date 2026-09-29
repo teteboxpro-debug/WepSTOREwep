@@ -12,17 +12,36 @@ export class TelegramBotService {
     this.startAutoDeleteWorker();
   }
 
-  // Telegram API request wrapper
+  // Telegram API request wrapper with markdown fallback and error resilience
   public async apiCall(token: string, method: string, payload: Record<string, any> = {}): Promise<any> {
     const url = `https://api.telegram.org/bot${token}/${method}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-    const data = await res.json();
-    return data;
+      const data = await res.json();
+      if (!data.ok) {
+        console.warn(`[Telegram API] ${method} error response:`, data.description || data);
+        // If Markdown formatting failed, retry sending as plain text
+        if (payload.parse_mode) {
+          const fallback = { ...payload };
+          delete fallback.parse_mode;
+          const retryRes = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(fallback)
+          });
+          return await retryRes.json();
+        }
+      }
+      return data;
+    } catch (err: any) {
+      console.error(`[Telegram API] Network error in ${method}:`, err.message);
+      return { ok: false, error: err.message };
+    }
   }
 
   // Validate bot token
@@ -36,6 +55,41 @@ export class TelegramBotService {
     } catch (err: any) {
       return { valid: false, error: err.message || 'Network connection failed' };
     }
+  }
+
+  // Webhook helpers for cloud/Vercel environments
+  public async getWebhookInfo(token: string): Promise<any> {
+    const res = await this.apiCall(token.trim(), 'getWebhookInfo');
+    return res.result;
+  }
+
+  public async setWebhook(token: string, webhookUrl: string): Promise<{ success: boolean; description?: string }> {
+    this.stopBot();
+    const res = await this.apiCall(token.trim(), 'setWebhook', {
+      url: webhookUrl.trim(),
+      allowed_updates: ['message', 'callback_query']
+    });
+
+    if (res.ok) {
+      await db.atomic((d) => {
+        d.bot_settings.status = 'online';
+        d.bot_settings.last_error = undefined;
+      });
+      return { success: true, description: res.description || 'Webhook registered successfully' };
+    }
+    return { success: false, description: res.description || 'Failed to set webhook' };
+  }
+
+  public async deleteWebhook(token: string): Promise<{ success: boolean; description?: string }> {
+    const res = await this.apiCall(token.trim(), 'deleteWebhook', { drop_pending_updates: false });
+    if (res.ok) {
+      this.currentToken = token.trim();
+      this.pollingActive = true;
+      this.pollAbortController = new AbortController();
+      this.runPollingLoop();
+      return { success: true, description: 'Webhook removed. Long polling activated.' };
+    }
+    return { success: false, description: res.description || 'Failed to delete webhook' };
   }
 
   // Start Bot Service with Token
@@ -53,8 +107,18 @@ export class TelegramBotService {
     this.stopBot();
 
     this.currentToken = token.trim();
-    this.pollingActive = true;
-    this.pollAbortController = new AbortController();
+
+    // Check if webhook is active
+    const hookInfo = await this.getWebhookInfo(this.currentToken);
+    if (!hookInfo?.url) {
+      // No webhook configured, clear any stale webhook and activate long polling
+      await this.apiCall(this.currentToken, 'deleteWebhook', { drop_pending_updates: false });
+      this.pollingActive = true;
+      this.pollAbortController = new AbortController();
+      this.runPollingLoop();
+    } else {
+      console.log('[Telegram Bot] Bot is using active Webhook:', hookInfo.url);
+    }
 
     await db.atomic((data) => {
       data.bot_settings.main_bot_token = this.currentToken;
@@ -65,8 +129,6 @@ export class TelegramBotService {
       data.bot_settings.last_error = undefined;
     });
 
-    // Start polling in background
-    this.runPollingLoop();
     return { success: true };
   }
 
@@ -89,8 +151,14 @@ export class TelegramBotService {
         });
 
         if (!res.ok) {
+          if (res.status === 409) {
+            console.warn('[Telegram Poll] 409 Conflict. Clearing webhook and retrying...');
+            await this.apiCall(this.currentToken, 'deleteWebhook', { drop_pending_updates: false });
+            await new Promise((r) => setTimeout(r, 2000));
+            continue;
+          }
           console.warn('[Telegram Poll] HTTP error:', res.status, res.statusText);
-          await new Promise((r) => setTimeout(r, 4000));
+          await new Promise((r) => setTimeout(r, 3000));
           continue;
         }
 
@@ -114,11 +182,15 @@ export class TelegramBotService {
             this.stopBot();
             break;
           }
+          if (data.error_code === 409) {
+            console.warn('[Telegram Poll] 409 Conflict in response. Clearing webhook...');
+            await this.apiCall(this.currentToken, 'deleteWebhook', { drop_pending_updates: false });
+          }
           await new Promise((r) => setTimeout(r, 3000));
         }
       } catch (err: any) {
         if (err.name === 'AbortError') break;
-        console.warn('[Telegram Poll] Connection glitch, retrying in 3s:', err.message);
+        console.warn('[Telegram Poll] Connection retry in 3s:', err.message);
         await new Promise((r) => setTimeout(r, 3000));
       }
     }
@@ -402,10 +474,11 @@ export class TelegramBotService {
 
     // 3. Routing commands and button clicks
     const keyboard = this.getMainMenuKeyboard();
+    const clean = text.trim();
 
     // Check code redemption command: /redeem CODE
-    if (text.startsWith('/redeem') || text.startsWith('redeem ')) {
-      const codePart = text.replace(/^\/?redeem\s*/i, '').trim();
+    if (clean.toLowerCase().startsWith('/redeem') || clean.toLowerCase().startsWith('redeem ')) {
+      const codePart = clean.replace(/^\/?redeem\s*/i, '').trim();
       if (!codePart) {
         const msg = 'ℹ️ To redeem a code, send:\n`/redeem YOUR_CODE`';
         if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, parse_mode: 'Markdown' });
@@ -417,7 +490,7 @@ export class TelegramBotService {
     }
 
     // Button 1: 🆓 FREE 1 VIDEOS
-    if (text === '🆓 FREE 1 VIDEOS' || text === '/free') {
+    if (clean === '🆓 FREE 1 VIDEOS' || clean.includes('FREE 1 VIDEOS') || clean.toLowerCase() === '/free') {
       const videos = db.getRaw().free_videos.filter((v) => v.is_active);
       if (videos.length === 0) {
         const msg = '🆓 FREE 1 VIDEOS\n\nNo free videos available right now. Check back soon!';
@@ -441,7 +514,7 @@ export class TelegramBotService {
     }
 
     // Button 2: 💰 My Balance
-    if (text === '💰 My Balance' || text === '/balance') {
+    if (clean === '💰 My Balance' || clean.includes('My Balance') || clean.toLowerCase() === '/balance') {
       const refreshedUser = db.getRaw().users[userId] || user;
       const msg = `💰 YOUR BALANCE\n\n⭐ Stars: ${refreshedUser.balance}\n\nTotal Earned: ${refreshedUser.total_earned}\nTotal Spent: ${refreshedUser.total_spent}\nReferrals: ${refreshedUser.referral_count}`;
       const inlineKeyboard = {
@@ -456,7 +529,7 @@ export class TelegramBotService {
     }
 
     // Button 3: ⭐ Buy Stars
-    if (text === '⭐ Buy Stars' || text === '/buy') {
+    if (clean === '⭐ Buy Stars' || clean.includes('Buy Stars') || clean.toLowerCase() === '/buy') {
       const packages = db.getRaw().star_packages.filter((p) => p.is_active);
       const packageButtons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = packages.map((pkg) => [
         { text: `${pkg.name} — $${pkg.price_usd}`, url: pkg.payment_url }
@@ -476,7 +549,7 @@ export class TelegramBotService {
     }
 
     // Button 4: 📺 Channels
-    if (text === '📺 Channels' || text === '/channels') {
+    if (clean === '📺 Channels' || clean.includes('Channels') || clean.toLowerCase() === '/channels') {
       const channels = db.getRaw().channels.filter((c) => c.is_active).sort((a, b) => a.display_order - b.display_order);
       if (channels.length === 0) {
         const msg = '📺 Channels\n\nNo official channels configured.';
@@ -510,7 +583,7 @@ export class TelegramBotService {
     }
 
     // Button 5: 📁 Files
-    if (text === '📁 Files' || text === '/files') {
+    if (clean === '📁 Files' || clean.includes('Files') || clean.toLowerCase() === '/files') {
       const files = db.getRaw().files.filter((f) => f.is_active);
       if (files.length === 0) {
         const msg = '📁 FILES\n\nNo files available in the catalog right now.';
@@ -534,7 +607,7 @@ export class TelegramBotService {
     }
 
     // Button 6: 🛒 Enter Store
-    if (text === '🛒 Enter Store' || text === '/store') {
+    if (clean === '🛒 Enter Store' || clean.includes('Enter Store') || clean.toLowerCase() === '/store') {
       const storeUrl = db.getRaw().bot_settings.store_url || 'https://etebox.com/store';
       const msg = `🛒 ENTER STORE\n\nClick below to open our official store:`;
       const markup = {
@@ -547,7 +620,7 @@ export class TelegramBotService {
     }
 
     // Button 7: 🔄 Backup Bot
-    if (text === '🔄 Backup Bot' || text === '/backup') {
+    if (clean === '🔄 Backup Bot' || clean.includes('Backup Bot') || clean.toLowerCase() === '/backup') {
       const backupUrl = db.getRaw().bot_settings.backup_bot_url || 'https://t.me/EteboxBackupBot';
       const msg = `🔄 BACKUP BOT\n\nIn case this bot experiences maintenance, join our Backup Bot to access all your balances, purchases, and files:`;
       const markup = {
@@ -560,7 +633,7 @@ export class TelegramBotService {
     }
 
     // Button 8: 👥 Refer & Earn
-    if (text === '👥 Refer & Earn' || text === '/refer') {
+    if (clean === '👥 Refer & Earn' || clean.includes('Refer & Earn') || clean.toLowerCase() === '/refer') {
       const botUsername = db.getRaw().bot_settings.main_bot_username || 'YOUR_BOT';
       const refLink = `https://t.me/${botUsername}?start=ref_${userId}`;
       const refreshed = db.getRaw().users[userId] || user;
@@ -572,7 +645,7 @@ export class TelegramBotService {
     }
 
     // Button 9: 🎮 Games
-    if (text === '🎮 Games' || text === '/games') {
+    if (clean === '🎮 Games' || clean.includes('Games') || clean.toLowerCase() === '/games') {
       const msg = `🎮 GAMES\n\nPlay fun games & claim achievements (non-wagering):\n\nChoose a game:`;
       const markup = {
         inline_keyboard: [
