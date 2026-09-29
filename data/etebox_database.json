@@ -1,0 +1,374 @@
+{
+  "users": {
+    "11223344": {
+      "id": "11223344",
+      "username": "TestUser",
+      "first_name": "Abood Tester",
+      "balance": 103,
+      "total_earned": 113,
+      "total_spent": 10,
+      "registered_at": "2026-09-28T19:55:11.011Z",
+      "last_activity_at": "2026-09-28T19:55:17.303Z",
+      "verification_status": "verified",
+      "last_verification_at": "2026-09-28T19:55:11.011Z",
+      "failed_verification_attempts": 0,
+      "is_banned": false,
+      "referral_count": 1,
+      "last_auto_reward_at": "2026-09-28T19:55:11.012Z"
+    },
+    "99887766": {
+      "id": "99887766",
+      "username": "TestUser",
+      "first_name": "Friend",
+      "balance": 3,
+      "total_earned": 3,
+      "total_spent": 0,
+      "registered_at": "2026-09-28T19:55:17.296Z",
+      "last_activity_at": "2026-09-28T19:55:17.296Z",
+      "verification_status": "verified",
+      "last_verification_at": "2026-09-28T19:55:17.296Z",
+      "failed_verification_attempts": 0,
+      "is_banned": false,
+      "referral_count": 0,
+      "referred_by": "11223344",
+      "last_auto_reward_at": "2026-09-28T19:55:17.296Z"
+    },
+    "user_channel_test": {
+      "id": "user_channel_test",
+      "username": "TestUser",
+      "first_name": "Abood Tester",
+      "balance": 78,
+      "total_earned": 103,
+      "total_spent": 25,
+      "registered_at": "2026-09-28T21:07:19.920Z",
+      "last_activity_at": "2026-09-28T21:07:19.955Z",
+      "verification_status": "verified",
+      "last_verification_at": "2026-09-28T21:07:19.920Z",
+      "failed_verification_attempts": 0,
+      "is_banned": false,
+      "referral_count": 0,
+      "last_auto_reward_at": "2026-09-28T21:07:19.920Z",
+      "unlocked_channels": [
+        "chan_9ca14a6e"
+      ]
+    }
+  },
+  "admins": {
+    "admin_initial": {
+      "id": "admin_initial",
+      "username": "Abood",
+      "password_hash": "5686b94a0b6ed873069617e4961689217f48eedbd14cd44b8ffeb6e122d012542b0d2bb4e658d40b42303b5bffd63237e0ffe42b591281fadeaebbd5826d1ec9",
+      "salt": "7c437714338a970ca58c1128a9b2ba9d",
+      "permissions": [
+        "all"
+      ],
+      "status": "active",
+      "created_at": "2026-09-28T19:55:05.377Z"
+    }
+  },
+  "admin_logs": [
+    {
+      "id": "18b0920c-309c-4664-9169-d37da95a917d",
+      "admin_username": "Abood",
+      "action": "USER_BALANCE_ADJUSTED",
+      "target": "User user_channel_test",
+      "details": "+100 Stars. Reason: Test balance",
+      "timestamp": "2026-09-28T21:07:19.942Z"
+    },
+    {
+      "id": "9bbae3af-255c-44ce-a8c8-a1967e9ef318",
+      "admin_username": "Abood",
+      "action": "CHANNEL_ADDED",
+      "target": "VIP Private Channel",
+      "details": "https://t.me/+vip_private_invite (25 Stars required)",
+      "timestamp": "2026-09-28T21:07:19.913Z"
+    },
+    {
+      "id": "03b7fd5e-8b86-4d4e-a891-6f9ab26ebcd9",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-09-28T21:07:19.898Z"
+    },
+    {
+      "id": "d073e68a-f782-4ffa-b6bd-3d4d7d6ec5c5",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-09-28T20:10:08.983Z"
+    },
+    {
+      "id": "7494c297-2b23-468b-96ec-50aea6b76de7",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-09-28T20:02:26.709Z"
+    },
+    {
+      "id": "903e91a7-4a50-4268-b34f-5351d927c8bf",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-09-28T19:55:10.987Z"
+    },
+    {
+      "id": "00d506c2-a073-4af8-988b-f6869c2b8cf3",
+      "admin_username": "SYSTEM",
+      "action": "DATABASE_INITIALIZED",
+      "details": "Central persistent database initialized with initial admin account.",
+      "timestamp": "2026-09-28T19:55:05.377Z"
+    }
+  ],
+  "bot_settings": {
+    "main_bot_token": "",
+    "is_main_active": false,
+    "status": "offline",
+    "auto_notify_free_content": true,
+    "store_url": "https://etebox.com/store",
+    "backup_bot_url": "https://t.me/EteboxBackupBot"
+  },
+  "star_transactions": [
+    {
+      "id": "93bb3103-1746-49cf-83db-b955b4734ea5",
+      "user_id": "11223344",
+      "amount": 3,
+      "balance_before": 0,
+      "balance_after": 3,
+      "type": "AUTO_REWARD",
+      "description": "8-Hour Auto Reward (+3 Stars)",
+      "timestamp": "2026-09-28T19:55:11.012Z"
+    },
+    {
+      "id": "393af4c7-11e3-40e9-8acc-a0427c1bb48a",
+      "user_id": "11223344",
+      "amount": 100,
+      "balance_before": 3,
+      "balance_after": 103,
+      "type": "CODE_REDEEM",
+      "description": "Redeemed Code: igkgktk (+100 Stars)",
+      "timestamp": "2026-09-28T19:55:11.029Z"
+    },
+    {
+      "id": "5c0fdb3c-1855-43fe-88a5-20da01150aec",
+      "user_id": "11223344",
+      "amount": -10,
+      "balance_before": 103,
+      "balance_after": 93,
+      "type": "PURCHASE",
+      "description": "Purchased file: File 1 Sample Pack",
+      "timestamp": "2026-09-28T19:55:11.046Z"
+    },
+    {
+      "id": "24e99aeb-fa59-4d4b-bdf2-27525a1e05ca",
+      "user_id": "11223344",
+      "amount": 10,
+      "balance_before": 93,
+      "balance_after": 103,
+      "type": "REFERRAL",
+      "description": "Referral bonus for inviting @TestUser",
+      "timestamp": "2026-09-28T19:55:17.296Z"
+    },
+    {
+      "id": "9f2953d6-affd-462c-833d-f15c490ac4cd",
+      "user_id": "99887766",
+      "amount": 3,
+      "balance_before": 0,
+      "balance_after": 3,
+      "type": "AUTO_REWARD",
+      "description": "8-Hour Auto Reward (+3 Stars)",
+      "timestamp": "2026-09-28T19:55:17.296Z"
+    },
+    {
+      "id": "305ad0a9-6409-4cc1-8ad4-4c6d15f4bac2",
+      "user_id": "user_channel_test",
+      "amount": 3,
+      "balance_before": 0,
+      "balance_after": 3,
+      "type": "AUTO_REWARD",
+      "description": "8-Hour Auto Reward (+3 Stars)",
+      "timestamp": "2026-09-28T21:07:19.920Z"
+    },
+    {
+      "id": "dfab7275-1832-4e1d-9fa3-796f5d9df07f",
+      "user_id": "user_channel_test",
+      "amount": 100,
+      "balance_before": 3,
+      "balance_after": 103,
+      "type": "ADMIN_ADD",
+      "description": "Test balance",
+      "timestamp": "2026-09-28T21:07:19.942Z",
+      "admin_id": "admin_initial"
+    },
+    {
+      "id": "b5fecc8c-cab9-4d21-b325-069d768cd5dd",
+      "user_id": "user_channel_test",
+      "amount": -25,
+      "balance_before": 103,
+      "balance_after": 78,
+      "type": "CHANNEL_UNLOCK",
+      "description": "Unlocked Channel Access: VIP Private Channel",
+      "timestamp": "2026-09-28T21:07:19.947Z"
+    }
+  ],
+  "star_packages": [
+    {
+      "id": "pkg_100",
+      "name": "⭐ 100 Stars",
+      "stars_amount": 100,
+      "price_usd": 1.99,
+      "payment_url": "https://etebox.com/pay/100",
+      "payment_info": "Instant activation after payment confirmation",
+      "is_active": true
+    },
+    {
+      "id": "pkg_250",
+      "name": "⭐ 250 Stars",
+      "stars_amount": 250,
+      "price_usd": 4.49,
+      "payment_url": "https://etebox.com/pay/250",
+      "payment_info": "Popular pack with 10% bonus value",
+      "is_active": true
+    },
+    {
+      "id": "pkg_500",
+      "name": "⭐ 500 Stars",
+      "stars_amount": 500,
+      "price_usd": 7.99,
+      "payment_url": "https://etebox.com/pay/500",
+      "payment_info": "Best value pack with 20% bonus value",
+      "is_active": true
+    }
+  ],
+  "star_codes": {
+    "igkgktk": {
+      "id": "code_1",
+      "code": "igkgktk",
+      "stars_amount": 100,
+      "is_active": true,
+      "is_used": true,
+      "created_at": "2026-09-28T19:55:05.377Z",
+      "used_by_user_id": "11223344",
+      "used_by_username": "TestUser",
+      "used_at": "2026-09-28T19:55:11.029Z"
+    },
+    "Hkdorigi": {
+      "id": "code_2",
+      "code": "Hkdorigi",
+      "stars_amount": 300,
+      "is_active": true,
+      "is_used": false,
+      "created_at": "2026-09-28T19:55:05.377Z"
+    }
+  },
+  "free_videos": [
+    {
+      "id": "free_vid_1",
+      "title": "🎬 Free Video 1",
+      "delivery_type": "EXTERNAL_CLOUD",
+      "download_url": "https://example.com/file/free-video-1",
+      "download_code": "A7K92X",
+      "description": "Exclusive introduction sample video",
+      "is_active": true,
+      "created_at": "2026-09-28T19:55:05.377Z"
+    },
+    {
+      "id": "free_vid_2",
+      "title": "🎬 Telegram Channel Free Video",
+      "delivery_type": "TELEGRAM_CHANNEL",
+      "telegram_message_url": "https://t.me/etebox_channel/10",
+      "description": "Direct channel delivery preview",
+      "is_active": true,
+      "created_at": "2026-09-28T19:55:05.377Z"
+    }
+  ],
+  "files": [
+    {
+      "id": "file_1",
+      "file_name": "File 1 Sample Pack",
+      "sample_url": "https://example.com/sample/file1.mp4",
+      "download_url": "https://example.com/download/file1_full.zip",
+      "file_code": "A7K92X",
+      "zip_password": "12345",
+      "price_stars": 10,
+      "is_active": true,
+      "created_at": "2026-09-28T19:55:05.377Z"
+    },
+    {
+      "id": "file_2",
+      "file_name": "File 2 Premium Collection",
+      "sample_url": "https://example.com/sample/file2.mp4",
+      "download_url": "https://example.com/download/file2_full.zip",
+      "file_code": "B9M41Z",
+      "zip_password": "98765",
+      "price_stars": 25,
+      "is_active": true,
+      "created_at": "2026-09-28T19:55:05.377Z"
+    }
+  ],
+  "file_purchases": [
+    {
+      "id": "ce5353cb-6949-4651-a107-e44f75b642b6",
+      "user_id": "11223344",
+      "file_id": "file_1",
+      "file_name": "File 1 Sample Pack",
+      "price_paid": 10,
+      "file_code": "A7K92X",
+      "zip_password": "12345",
+      "purchased_at": "2026-09-28T19:55:11.046Z"
+    }
+  ],
+  "channels": [
+    {
+      "id": "chan_1",
+      "name": "📢 Official Announcements",
+      "url": "https://t.me/etebox_official",
+      "display_order": 1,
+      "is_active": true,
+      "required_stars": 0
+    },
+    {
+      "id": "chan_2",
+      "name": "🎁 VIP Drops Channel",
+      "url": "https://t.me/etebox_drops",
+      "display_order": 2,
+      "is_active": true,
+      "required_stars": 0
+    },
+    {
+      "id": "chan_9ca14a6e",
+      "name": "VIP Private Channel",
+      "url": "https://t.me/+vip_private_invite",
+      "display_order": 3,
+      "is_active": true,
+      "required_stars": 25
+    }
+  ],
+  "referrals": [
+    {
+      "id": "defcd776-b176-46d5-982d-1a25549da59b",
+      "referrer_user_id": "11223344",
+      "referred_user_id": "99887766",
+      "status": "qualified",
+      "stars_rewarded": 10,
+      "created_at": "2026-09-28T19:55:17.296Z",
+      "qualified_at": "2026-09-28T19:55:17.296Z"
+    }
+  ],
+  "human_verifications": {},
+  "broadcasts": [],
+  "game_records": [
+    {
+      "id": "67fa096e-0faf-4d12-8a1b-2e8b47a7facc",
+      "user_id": "11223344",
+      "game_type": "LUCKY_DICE",
+      "result_details": "Rolled a 2",
+      "reward_stars": 0,
+      "timestamp": "2026-09-28T19:55:17.310Z"
+    }
+  ],
+  "scheduled_deletions": []
+}

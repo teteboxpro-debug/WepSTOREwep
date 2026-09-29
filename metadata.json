@@ -1,0 +1,7 @@
+{
+  "name": "Etebox Telegram Bot & Admin Panel",
+  "description": "Production Telegram Bot management system, persistent database, internal stars currency, and mobile web admin panel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
