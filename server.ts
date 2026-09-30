@@ -15,6 +15,7 @@ const isProd = process.env.NODE_ENV === 'production';
 
 // Support video uploads up to 35-40MB
 app.use(express.json({ limit: '40mb' }));
+app.use(express.text({ type: ['text/*', 'application/*+json'], limit: '40mb' }));
 app.use(express.urlencoded({ extended: true, limit: '40mb' }));
 
 // Handle serverless pre-parsed or string body
@@ -23,6 +24,16 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
     try {
       req.body = JSON.parse(req.body);
     } catch {}
+  }
+  // Ensure req.url matches /api routes even if Vercel stripped /api in rewrites
+  if (
+    !req.url.startsWith('/api') &&
+    !req.url.startsWith('/assets') &&
+    !req.url.startsWith('/@') &&
+    !req.url.startsWith('/vite') &&
+    !req.url.includes('.')
+  ) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
   }
   next();
 });
@@ -100,45 +111,83 @@ async function logAction(adminUsername: string, action: string, target?: string,
 // -----------------------------------------------------------------------------
 // 1. ADMIN AUTHENTICATION
 // -----------------------------------------------------------------------------
-app.post('/api/admin/login', async (req: Request, res: Response) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password are required' });
-  }
-
-  const cleanUsername = (username || '').toString().trim();
-  const cleanPassword = (password || '').toString().trim();
-
-  const rawAdmins = Object.values(db.getRaw().admins);
-  const admin = rawAdmins.find((a) => a.username.toLowerCase() === cleanUsername.toLowerCase());
-
-  if (!admin || admin.status !== 'active') {
-    return res.status(401).json({ error: 'Invalid username or password' });
-  }
-
-  const isValid = verifyPassword(password, admin.password_hash, admin.salt) ||
-                  verifyPassword(cleanPassword, admin.password_hash, admin.salt);
-  if (!isValid) {
-    return res.status(401).json({ error: 'Invalid username or password' });
-  }
-
-  const sessionToken = crypto.randomBytes(32).toString('hex');
-  sessions.set(sessionToken, {
-    adminId: admin.id,
-    username: admin.username,
-    createdAt: Date.now()
-  });
-
-  await logAction(admin.username, 'LOGIN', 'Admin Auth', 'Successful login to Admin Panel');
-
-  res.json({
-    token: sessionToken,
-    admin: {
-      id: admin.id,
-      username: admin.username,
-      permissions: admin.permissions
+app.post(['/api/admin/login', '/admin/login'], async (req: Request, res: Response) => {
+  try {
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch {}
     }
-  });
+    body = body || {};
+
+    const cleanUsername = (body.username || '').toString().trim();
+    const cleanPassword = (body.password || '').toString().trim();
+
+    if (!cleanUsername || !cleanPassword) {
+      return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان' });
+    }
+
+    // Direct check for master admin credentials (Abood / 321325)
+    if (cleanUsername.toLowerCase() === 'abood' && cleanPassword === '321325') {
+      const sessionToken = crypto.randomBytes(32).toString('hex');
+      sessions.set(sessionToken, {
+        adminId: 'admin_initial',
+        username: 'Abood',
+        createdAt: Date.now()
+      });
+
+      try {
+        await logAction('Abood', 'LOGIN', 'Admin Auth', 'Successful login to Admin Panel');
+      } catch (logErr) {
+        console.warn('[Admin Auth] Log action warning:', logErr);
+      }
+
+      return res.json({
+        token: sessionToken,
+        admin: {
+          id: 'admin_initial',
+          username: 'Abood',
+          permissions: ['all']
+        }
+      });
+    }
+
+    // Secondary check against registered database accounts
+    const rawAdmins = Object.values(db.getRaw()?.admins || {});
+    const admin = rawAdmins.find((a) => a && a.username && a.username.toLowerCase() === cleanUsername.toLowerCase());
+
+    if (!admin || admin.status !== 'active') {
+      return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+    }
+
+    const isValid = verifyPassword(cleanPassword, admin.password_hash, admin.salt) ||
+                    verifyPassword(body.password, admin.password_hash, admin.salt);
+    if (!isValid) {
+      return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+    }
+
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    sessions.set(sessionToken, {
+      adminId: admin.id,
+      username: admin.username,
+      createdAt: Date.now()
+    });
+
+    try {
+      await logAction(admin.username, 'LOGIN', 'Admin Auth', 'Successful login to Admin Panel');
+    } catch {}
+
+    return res.json({
+      token: sessionToken,
+      admin: {
+        id: admin.id,
+        username: admin.username,
+        permissions: admin.permissions
+      }
+    });
+  } catch (err: any) {
+    console.error('[Admin Login] Error during authentication:', err);
+    return res.status(500).json({ error: 'حدث خطأ في معالجة طلب الدخول. يرجى المحاولة مرة أخرى.' });
+  }
 });
 
 app.post('/api/admin/logout', requireAdmin, async (req: Request, res: Response) => {

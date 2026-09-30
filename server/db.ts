@@ -2,8 +2,40 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-const DATA_DIR = isVercel ? path.resolve('/tmp', 'etebox_data') : path.resolve(process.cwd(), 'data');
+function getSafeDataDir(): string {
+  if (
+    process.env.VERCEL ||
+    process.env.VERCEL_ENV ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT ||
+    process.env.NOW_REGION
+  ) {
+    return path.resolve('/tmp', 'etebox_data');
+  }
+
+  try {
+    const localDir = path.resolve(process.cwd(), 'data');
+    if (!fs.existsSync(localDir)) {
+      fs.mkdirSync(localDir, { recursive: true });
+    }
+    const testFile = path.resolve(localDir, '.write_check_' + Date.now());
+    fs.writeFileSync(testFile, '1');
+    fs.unlinkSync(testFile);
+    return localDir;
+  } catch {
+    return path.resolve('/tmp', 'etebox_data');
+  }
+}
+
+const isVercel = Boolean(
+  process.env.VERCEL ||
+  process.env.VERCEL_ENV ||
+  process.env.AWS_LAMBDA_FUNCTION_NAME ||
+  process.env.LAMBDA_TASK_ROOT ||
+  process.env.NOW_REGION
+);
+
+const DATA_DIR = getSafeDataDir();
 const DB_FILE = path.resolve(DATA_DIR, 'etebox_database.json');
 const SEED_FILE = path.resolve(process.cwd(), 'data', 'etebox_database.json');
 
@@ -12,7 +44,7 @@ try {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
-  if (isVercel && fs.existsSync(SEED_FILE) && !fs.existsSync(DB_FILE)) {
+  if (fs.existsSync(SEED_FILE) && !fs.existsSync(DB_FILE)) {
     fs.copyFileSync(SEED_FILE, DB_FILE);
   }
 } catch (e) {
