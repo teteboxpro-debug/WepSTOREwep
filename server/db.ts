@@ -72,6 +72,37 @@ export function verifyPassword(password: string, hash: string, salt: string): bo
   }
 }
 
+// Encryption helpers for storing tokens securely at rest (AES-256-GCM)
+const ENCRYPTION_KEY = crypto.scryptSync(process.env.ENCRYPTION_SECRET || 'etebox-master-secret-vault-2026', 'etebox-vault-salt', 32);
+
+export function encryptToken(token: string): string {
+  if (!token) return '';
+  try {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+    const encrypted = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+  } catch {
+    return token;
+  }
+}
+
+export function decryptToken(encryptedString: string): string {
+  if (!encryptedString) return '';
+  if (!encryptedString.includes(':')) return encryptedString;
+  try {
+    const [ivHex, tagHex, contentHex] = encryptedString.split(':');
+    if (!ivHex || !tagHex || !contentHex) return encryptedString;
+    const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    const decrypted = Buffer.concat([decipher.update(Buffer.from(contentHex, 'hex')), decipher.final()]);
+    return decrypted.toString('utf8');
+  } catch {
+    return encryptedString;
+  }
+}
+
 // Schemas
 export interface User {
   id: string; // Permanent Telegram User ID
@@ -114,17 +145,25 @@ export interface AdminLog {
 
 export interface BotSettings {
   main_bot_token: string;
+  encrypted_bot_token?: string;
   is_main_active: boolean;
   main_bot_username?: string;
   main_bot_first_name?: string;
+  telegram_bot_id?: string;
+  webhook_url?: string;
+  webhook_secret?: string;
   status: 'online' | 'offline' | 'token_invalid' | 'telegram_error';
   last_error?: string;
+  last_active_at?: string;
+  welcome_message?: string;
   backup_bot_token?: string;
   backup_bot_active?: boolean;
   backup_bot_username?: string;
   backup_bot_url?: string;
   store_url?: string;
   auto_notify_free_content: boolean;
+  auto_reward_amount?: number;
+  auto_reward_interval_hours?: number;
 }
 
 export interface StarTransaction {

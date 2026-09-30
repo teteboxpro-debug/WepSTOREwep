@@ -16,6 +16,22 @@
       "referral_count": 1,
       "last_auto_reward_at": "2026-09-28T19:55:11.012Z"
     },
+    "12345678": {
+      "id": "12345678",
+      "username": "TestUser",
+      "first_name": "Abood Tester",
+      "balance": 3,
+      "total_earned": 3,
+      "total_spent": 0,
+      "registered_at": "2026-09-30T14:11:24.430Z",
+      "last_activity_at": "2026-09-30T14:11:24.441Z",
+      "verification_status": "verified",
+      "last_verification_at": "2026-09-30T14:11:24.430Z",
+      "failed_verification_attempts": 0,
+      "is_banned": false,
+      "referral_count": 0,
+      "last_auto_reward_at": "2026-09-30T14:11:24.431Z"
+    },
     "88991122": {
       "id": "88991122",
       "username": "testuser",
@@ -83,6 +99,14 @@
     }
   },
   "admin_logs": [
+    {
+      "id": "cf974148-67c7-4b68-8d73-ec9bcfcaba22",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-09-30T14:11:24.401Z"
+    },
     {
       "id": "7fa8ed6e-7d02-4efe-90e6-6138a2541ca3",
       "admin_username": "Abood",
@@ -345,6 +369,16 @@
       "type": "AUTO_REWARD",
       "description": "8-Hour Auto Reward (+3 Stars)",
       "timestamp": "2026-09-30T13:40:29.762Z"
+    },
+    {
+      "id": "1e3f7009-8e3e-4f1a-8d24-10af98701215",
+      "user_id": "12345678",
+      "amount": 3,
+      "balance_before": 0,
+      "balance_after": 3,
+      "type": "AUTO_REWARD",
+      "description": "8-Hour Auto Reward (+3 Stars)",
+      "timestamp": "2026-09-30T14:11:24.431Z"
     }
   ],
   "star_packages": [
