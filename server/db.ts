@@ -152,6 +152,9 @@ export interface BotSettings {
   telegram_bot_id?: string;
   webhook_url?: string;
   webhook_secret?: string;
+  last_webhook_error?: string;
+  last_update_received_at?: string;
+  last_update_id?: number;
   status: 'online' | 'offline' | 'token_invalid' | 'telegram_error';
   last_error?: string;
   last_active_at?: string;

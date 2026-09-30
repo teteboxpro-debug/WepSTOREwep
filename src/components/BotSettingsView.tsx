@@ -17,6 +17,18 @@ import {
 } from 'lucide-react';
 import type { BotSettingsData } from '../types';
 
+// Helper to compute the clean public production domain (stripping -etebox and -git- preview suffixes)
+function getCleanProductionUrl(): string {
+  let origin = window.location.origin;
+  if (origin.includes('.vercel.app')) {
+    if (origin.includes('-etebox') || origin.includes('-git-')) {
+      const baseProject = origin.split('-git-')[0].split('-etebox')[0];
+      return `${baseProject}.vercel.app/api/telegram-webhook`;
+    }
+  }
+  return `${origin}/api/telegram-webhook`;
+}
+
 export default function BotSettingsView() {
   const [settings, setSettings] = useState<BotSettingsData | null>(null);
   const [webhookInfo, setWebhookInfo] = useState<any>(null);
@@ -26,7 +38,10 @@ export default function BotSettingsView() {
   const [storeUrl, setStoreUrl] = useState('');
   const [backupBotUrl, setBackupBotUrl] = useState('');
   const [autoNotify, setAutoNotify] = useState(true);
+  const [customWebhookUrl, setCustomWebhookUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [pingStatus, setPingStatus] = useState<{ status: 'success' | 'error'; code?: number; text: string } | null>(null);
+  const [pinging, setPinging] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fetchSettings = async () => {
@@ -41,7 +56,12 @@ export default function BotSettingsView() {
         try {
           const hookRes = await apiRequest('/admin/bot/webhook-info');
           setWebhookInfo(hookRes.info);
+          if (!customWebhookUrl) {
+            setCustomWebhookUrl(hookRes.info?.url || getCleanProductionUrl());
+          }
         } catch {}
+      } else if (!customWebhookUrl) {
+        setCustomWebhookUrl(getCleanProductionUrl());
       }
     } catch (err: any) {
       console.error('Error loading bot settings:', err);
@@ -54,16 +74,69 @@ export default function BotSettingsView() {
     fetchSettings();
   }, []);
 
+  const handleTestWebhookReachability = async (urlToTest: string) => {
+    setPinging(true);
+    setPingStatus(null);
+    try {
+      const target = (urlToTest || customWebhookUrl || getCleanProductionUrl()).trim();
+      const res = await fetch(target, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ping: true, timestamp: Date.now() })
+      });
+      const text = await res.text();
+      if (text.includes('Protected by Vercel Authentication') || text.includes('vercel_auth_enabled')) {
+        setPingStatus({
+          status: 'error',
+          code: 401,
+          text: '❌ مسار الويب هوك محمي بنظام Vercel Authentication ولذلك يرفض تيليجرام برمز 401! استخدم الدومين الإنتاجي الأساسي (wepeteboxstorewep.vercel.app).'
+        });
+      } else if (res.status === 200 || res.status === 401) {
+        // 200 OK or 401 Invalid secret token both prove the endpoint is reached and Vercel did NOT block it!
+        setPingStatus({
+          status: 'success',
+          code: res.status,
+          text: `✅ المسار مفتوح ومتاح للوصول بنجاح (HTTP ${res.status})! تيليجرام قادر على إرسال التحديثات.`
+        });
+      } else {
+        setPingStatus({
+          status: 'error',
+          code: res.status,
+          text: `⚠️ استجاب الرابط برمز HTTP ${res.status}.`
+        });
+      }
+    } catch (err: any) {
+      setPingStatus({
+        status: 'error',
+        text: `❌ تعذر الاتصال بالرابط: ${err.message}`
+      });
+    } finally {
+      setPinging(false);
+    }
+  };
+
   const handleSetWebhook = async (urlToSet?: string) => {
     setSubmitting(true);
     setMessage(null);
+    setPingStatus(null);
     try {
-      const targetUrl = urlToSet || `${window.location.origin}/api/telegram-webhook`;
-      const res = await apiRequest('/admin/bot/set-webhook', {
+      let targetUrl = (urlToSet || customWebhookUrl || getCleanProductionUrl()).trim();
+      // Safety check: if targetUrl has -git-*.vercel.app or -etebox.vercel.app, replace with clean production url
+      if (targetUrl.includes('.vercel.app') && (targetUrl.includes('-git-') || targetUrl.includes('-etebox'))) {
+        targetUrl = targetUrl.replace(/https?:\/\/([a-z0-9_-]+?)(?:-git-.*|-etebox)[^/]+/i, 'https://$1.vercel.app');
+      }
+
+      const res = await apiRequest<{ success: boolean; message: string; url?: string; webhookInfo?: any }>('/admin/bot/set-webhook', {
         method: 'POST',
         body: JSON.stringify({ webhookUrl: targetUrl })
       });
-      setMessage({ type: 'success', text: res.message || 'Webhook successfully set!' });
+      setMessage({ type: 'success', text: res.message || 'Webhook successfully set with secret_token!' });
+      if (res.url) {
+        setCustomWebhookUrl(res.url);
+      }
+      if (res.webhookInfo) {
+        setWebhookInfo(res.webhookInfo);
+      }
       await fetchSettings();
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to set webhook' });
@@ -272,7 +345,45 @@ export default function BotSettingsView() {
             </span>
           </div>
 
-          <div className="space-y-2 text-xs">
+          <div className="space-y-3 text-xs">
+            {/* Detailed Webhook & Bot Diagnostics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3.5 bg-slate-950/70 rounded-xl border border-slate-800">
+              <div>
+                <span className="text-slate-400 block text-[11px] mb-0.5">1. Bot Token:</span>
+                <span className="font-semibold text-slate-200">
+                  {settings?.hasToken ? `✅ Valid (@${settings.botUsername || 'Bot'})` : '❌ Not Set'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px] mb-0.5">2. Webhook Setup:</span>
+                <span className="font-semibold text-slate-200">
+                  {webhookInfo?.url ? '⚡ Configured' : '⏸️ Not Set'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px] mb-0.5">3. Webhook Reachable:</span>
+                <span className={`font-semibold ${
+                  webhookInfo?.last_error_message
+                    ? 'text-rose-400'
+                    : (webhookInfo?.url ? 'text-emerald-400' : 'text-slate-400')
+                }`}>
+                  {webhookInfo?.last_error_message ? '🔴 Unreachable' : (webhookInfo?.url ? '🟢 Reachable' : 'Unknown')}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px] mb-0.5">4. Secret Token Protection:</span>
+                <span className="font-semibold text-teal-300">
+                  {settings?.hasSecretToken ? '🔒 Active (X-Telegram-Bot-Api-Secret-Token)' : '⚠️ None'}
+                </span>
+              </div>
+              <div className="col-span-2 sm:col-span-2">
+                <span className="text-slate-400 block text-[11px] mb-0.5">5. Last Update Received:</span>
+                <span className="font-mono text-slate-200">
+                  {settings?.lastUpdateReceivedAt ? new Date(settings.lastUpdateReceivedAt).toLocaleString() : 'No updates received yet'}
+                </span>
+              </div>
+            </div>
+
             <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 font-mono space-y-1">
               <div className="text-slate-400 font-sans">
                 <strong>Active Telegram Webhook URL:</strong>
@@ -281,21 +392,100 @@ export default function BotSettingsView() {
                 {webhookInfo?.url || 'None (Bot is receiving updates via internal Long Polling)'}
               </div>
               {webhookInfo?.last_error_message && (
-                <div className="text-rose-400 pt-1">
+                <div className="text-rose-400 pt-1 font-sans">
                   <strong>Telegram Webhook Error:</strong> {webhookInfo.last_error_message}
                 </div>
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 pt-2">
+            {/* Direct 401 Resolution Alert & Fix Button */}
+            {Boolean(webhookInfo?.last_error_message?.includes('401') || webhookInfo?.url?.includes('-git-') || webhookInfo?.url?.includes('-etebox')) && (
+              <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-3">
+                <div className="flex items-start gap-2.5 text-amber-300 text-xs">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-amber-200">
+                      سبب خطأ 401 Unauthorized:
+                    </p>
+                    <p className="text-amber-300/90 text-xs mt-1">
+                      الرابط الحالي محمي بنظام Vercel Authentication ولذلك يرفض تيليجرام برمز 401. اضغط على الزر أدناه للتحويل فوراً إلى الدومين الإنتاجي الأساسي العام المفتوح:
+                    </p>
+                    <p className="font-mono text-emerald-400 text-xs mt-1 font-semibold truncate">
+                      {getCleanProductionUrl()}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSetWebhook(getCleanProductionUrl())}
+                  disabled={submitting}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-medium rounded-xl text-xs shadow-lg shadow-emerald-600/20 transition cursor-pointer"
+                >
+                  <Zap className="w-4 h-4" />
+                  <span>إصلاح فوري: تفعيل الويب هوك على الدومين الأساسي (Fix 401 Now)</span>
+                </button>
+              </div>
+            )}
+
+            {/* Editable Webhook URL Input & Test Ping */}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-slate-300 font-sans font-medium block">
+                تعديل أو تحديد رابط الويب هوك (Webhook URL):
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={customWebhookUrl}
+                  onChange={(e) => setCustomWebhookUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="flex-1 px-3.5 py-2.5 bg-slate-950/80 border border-slate-700/80 rounded-xl text-slate-100 font-mono text-xs focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleTestWebhookReachability(customWebhookUrl)}
+                  disabled={pinging}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium transition cursor-pointer whitespace-nowrap"
+                  title="فحص وصول الرابط والتأكد من عدم حظره برمز 401 من Vercel"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${pinging ? 'animate-spin' : ''}`} />
+                  <span>Test Reachability</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetWebhook(customWebhookUrl)}
+                  disabled={submitting}
+                  className="flex items-center justify-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-medium transition cursor-pointer whitespace-nowrap"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Activate Webhook on Current App Domain</span>
+                </button>
+              </div>
+
+              {pingStatus && (
+                <div className={`p-2.5 rounded-lg border text-xs mt-2 flex items-center gap-2 ${
+                  pingStatus.status === 'success'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                }`}>
+                  {pingStatus.status === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-400" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400" />
+                  )}
+                  <span>{pingStatus.text}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => handleSetWebhook()}
+                onClick={() => handleSetWebhook(getCleanProductionUrl())}
                 disabled={submitting}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-medium transition cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium transition cursor-pointer"
               >
                 <Zap className="w-3.5 h-3.5" />
-                <span>Activate Webhook on Current App Domain</span>
+                <span>Set to Production Domain ({getCleanProductionUrl().replace('https://', '').split('/')[0]})</span>
               </button>
 
               <button

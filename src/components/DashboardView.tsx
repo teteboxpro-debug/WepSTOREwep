@@ -198,19 +198,55 @@ export default function DashboardView({ onNavigate, onOpenEmulator }: DashboardV
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              {stats?.botStatus === 'online'
-                ? `Actively polling updates and processing user interactions in real-time.`
-                : stats?.botError || 'Enter your BotFather Token in Bot Settings to start the bot.'}
-            </p>
+
+            {/* Diagnostic Badges distinguishing Bot Token vs Webhook vs Reachability */}
+            <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px]">
+              <span className={`px-2 py-0.5 rounded-lg border font-medium ${
+                stats?.botTokenValid
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+              }`}>
+                Token: {stats?.botTokenValid ? '✅ Valid' : '❌ Not Set'}
+              </span>
+
+              <span className={`px-2 py-0.5 rounded-lg border font-medium ${
+                stats?.webhookConfigured
+                  ? 'bg-teal-500/10 border-teal-500/30 text-teal-300'
+                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              }`}>
+                Webhook: {stats?.webhookConfigured ? '⚡ Configured' : '⏸️ Not Set'}
+              </span>
+
+              <span className={`px-2 py-0.5 rounded-lg border font-medium ${
+                stats?.webhookReachable
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  : stats?.lastWebhookError
+                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              }`}>
+                Reachable: {stats?.webhookReachable ? '🟢 200 OK' : (stats?.lastWebhookError ? '🔴 Error' : 'Unknown')}
+              </span>
+
+              {stats?.lastUpdateReceivedAt && (
+                <span className="px-2 py-0.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-300">
+                  Last Update: {new Date(stats.lastUpdateReceivedAt).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+
+            {stats?.lastWebhookError && (
+              <div className="mt-2 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-lg">
+                <strong>Webhook Error:</strong> {stats.lastWebhookError}
+              </div>
+            )}
           </div>
         </div>
 
         <button
           onClick={() => onNavigate('bot_settings')}
-          className="self-start md:self-center px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-medium border border-slate-700 transition"
+          className="self-start md:self-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium shadow-md shadow-indigo-600/20 transition cursor-pointer"
         >
-          Configure Bot Token →
+          Manage Webhook & Bot →
         </button>
       </div>
 

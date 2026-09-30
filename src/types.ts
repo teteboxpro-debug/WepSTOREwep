@@ -18,6 +18,11 @@ export interface DashboardStats {
   botUsername?: string;
   botFirstName?: string;
   botError?: string;
+  botTokenValid?: boolean;
+  webhookConfigured?: boolean;
+  webhookReachable?: boolean;
+  lastWebhookError?: string;
+  lastUpdateReceivedAt?: string;
   recentTransactions: StarTx[];
 }
 
@@ -32,6 +37,13 @@ export interface BotSettingsData {
   storeUrl: string;
   backupBotUrl: string;
   autoNotifyFreeContent: boolean;
+  webhookUrl?: string;
+  webhookConfigured?: boolean;
+  webhookReachable?: boolean;
+  hasSecretToken?: boolean;
+  lastWebhookError?: string;
+  lastUpdateReceivedAt?: string;
+  lastUpdateId?: number;
 }
 
 export interface UserItem {

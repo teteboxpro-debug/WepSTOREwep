@@ -260,6 +260,11 @@ app.get('/api/admin/stats', requireAdmin, (req: Request, res: Response) => {
   const totalFiles = raw.files.filter((f) => f.is_active).length;
   const totalChannels = raw.channels.filter((c) => c.is_active).length;
 
+  const hasToken = Boolean(raw.bot_settings.main_bot_token);
+  const isOnline = raw.bot_settings.status === 'online';
+  const webhookConfigured = Boolean(raw.bot_settings.webhook_url);
+  const webhookReachable = webhookConfigured && !raw.bot_settings.last_webhook_error;
+
   res.json({
     totalUsers,
     activeUsers,
@@ -274,6 +279,11 @@ app.get('/api/admin/stats', requireAdmin, (req: Request, res: Response) => {
     botUsername: raw.bot_settings.main_bot_username,
     botFirstName: raw.bot_settings.main_bot_first_name,
     botError: raw.bot_settings.last_error,
+    botTokenValid: hasToken && isOnline,
+    webhookConfigured,
+    webhookReachable,
+    lastWebhookError: raw.bot_settings.last_webhook_error,
+    lastUpdateReceivedAt: raw.bot_settings.last_update_received_at,
     recentTransactions: raw.star_transactions.slice(-8).reverse()
   });
 });
@@ -296,7 +306,14 @@ app.get('/api/admin/bot/settings', requireAdmin, (req: Request, res: Response) =
     lastError: settings.last_error,
     storeUrl: settings.store_url || 'https://etebox.com/store',
     backupBotUrl: settings.backup_bot_url || 'https://t.me/EteboxBackupBot',
-    autoNotifyFreeContent: settings.auto_notify_free_content ?? true
+    autoNotifyFreeContent: settings.auto_notify_free_content ?? true,
+    webhookUrl: settings.webhook_url,
+    webhookConfigured: Boolean(settings.webhook_url),
+    webhookReachable: Boolean(settings.webhook_url && !settings.last_webhook_error),
+    hasSecretToken: Boolean(settings.webhook_secret),
+    lastWebhookError: settings.last_webhook_error,
+    lastUpdateReceivedAt: settings.last_update_received_at,
+    lastUpdateId: settings.last_update_id
   });
 });
 
@@ -328,7 +345,12 @@ app.post('/api/admin/bot/save-and-activate', requireAdmin, async (req: Request, 
     });
 
     // Detect if running on Vercel or any public domain
-    const host = (req.get('x-forwarded-host') || req.get('host') || '').toLowerCase();
+    let host = (req.get('x-forwarded-host') || req.get('host') || '').toLowerCase().trim();
+    // If running on a Vercel preview branch or preview alias, sanitize to the public production domain
+    if (host.includes('-git-') && host.includes('.vercel.app')) {
+      host = host.split('-git-')[0] + '.vercel.app';
+      console.log(`[Bot Engine] Converted preview host to production host: ${host}`);
+    }
     const isPublicOrVercel = Boolean(host && !host.includes('localhost') && !host.includes('127.0.0.1'));
 
     // Step 1: Validate token directly with Telegram API
@@ -348,12 +370,13 @@ app.post('/api/admin/bot/save-and-activate', requireAdmin, async (req: Request, 
     let activationMessage = '';
 
     if (isPublicOrVercel) {
-      // Step 2A (Public / Vercel Host): Configure Webhook directly
+      // Step 2A (Public / Vercel Host): Configure Webhook directly with secure secret_token
       const autoWebhookUrl = `https://${host}/api/telegram-webhook`;
-      console.log(`[Bot Engine] Public host detected (${host}). Setting Webhook: ${autoWebhookUrl}`);
+      const secretToken = crypto.randomBytes(32).toString('hex');
+      console.log(`[Bot Engine] Public host detected (${host}). Setting Webhook with secret_token: ${autoWebhookUrl}`);
 
       try {
-        const hookRes = await telegramBot.setWebhook(tokenToUse, autoWebhookUrl);
+        const hookRes = await telegramBot.setWebhook(tokenToUse, autoWebhookUrl, secretToken);
         webhookConfigured = hookRes.success;
       } catch (hookErr: any) {
         console.warn('[Bot Engine] Webhook configuration warning:', hookErr.message);
@@ -365,6 +388,8 @@ app.post('/api/admin/bot/save-and-activate', requireAdmin, async (req: Request, 
         d.bot_settings.main_bot_username = validation.user.username;
         d.bot_settings.main_bot_first_name = validation.user.first_name;
         d.bot_settings.status = 'online';
+        d.bot_settings.webhook_url = autoWebhookUrl;
+        d.bot_settings.webhook_secret = secretToken;
         d.bot_settings.last_error = undefined;
       });
 
@@ -413,26 +438,62 @@ app.post('/api/admin/bot/stop', requireAdmin, async (req: Request, res: Response
 
 // Telegram Webhook Management
 app.get('/api/admin/bot/webhook-info', requireAdmin, async (_req: Request, res: Response) => {
-  const token = db.getRaw().bot_settings.main_bot_token;
+  const settings = db.getRaw().bot_settings;
+  const token = settings.main_bot_token;
   if (!token) return res.status(400).json({ error: 'No bot token configured' });
   const info = await telegramBot.getWebhookInfo(token);
-  res.json({ info });
+
+  if (info?.last_error_message) {
+    await db.atomic((d) => {
+      d.bot_settings.last_webhook_error = info.last_error_message;
+    });
+  }
+
+  res.json({
+    info,
+    storedUrl: settings.webhook_url,
+    hasSecretToken: Boolean(settings.webhook_secret),
+    lastWebhookError: settings.last_webhook_error || info?.last_error_message,
+    lastUpdateReceivedAt: settings.last_update_received_at,
+    lastUpdateId: settings.last_update_id
+  });
 });
 
 app.post('/api/admin/bot/set-webhook', requireAdmin, async (req: Request, res: Response) => {
   const admin = (req as any).admin;
-  const { webhookUrl } = req.body;
+  let { webhookUrl } = req.body;
   const token = db.getRaw().bot_settings.main_bot_token;
   if (!token) return res.status(400).json({ error: 'No bot token configured' });
   if (!webhookUrl) return res.status(400).json({ error: 'Webhook URL is required' });
 
-  const result = await telegramBot.setWebhook(token, webhookUrl);
+  let cleanUrl = (webhookUrl || '').toString().trim();
+  // If webhookUrl points to a Vercel git/preview branch deployment (e.g. *-git-*.vercel.app),
+  // convert it to the public production domain to avoid Vercel Authentication 401 Unauthorized
+  if (cleanUrl.includes('-git-') && cleanUrl.includes('.vercel.app')) {
+    cleanUrl = cleanUrl.replace(/https?:\/\/([a-z0-9_-]+?)-git-[^/]+/i, 'https://$1.vercel.app');
+    console.log(`[Bot Engine] Converted preview webhook URL to production URL: ${cleanUrl}`);
+  }
+
+  // Generate secure random secret_token (64 hex characters)
+  const secretToken = crypto.randomBytes(32).toString('hex');
+  console.log(`[Bot Engine] Setting Telegram webhook: ${cleanUrl} with secret_token`);
+
+  const result = await telegramBot.setWebhook(token, cleanUrl, secretToken);
   if (!result.success) {
     return res.status(400).json({ error: result.description });
   }
 
-  await logAction(admin.username, 'WEBHOOK_SET', 'Telegram Bot', `Webhook set to ${webhookUrl}`);
-  res.json({ success: true, message: result.description });
+  // Immediately query getWebhookInfo from Telegram to verify
+  const info = await telegramBot.getWebhookInfo(token);
+
+  await logAction(admin.username, 'WEBHOOK_SET', 'Telegram Bot', `Webhook set to ${cleanUrl}`);
+  res.json({
+    success: true,
+    message: result.description,
+    url: cleanUrl,
+    hasSecretToken: true,
+    webhookInfo: info
+  });
 });
 
 app.post('/api/admin/bot/delete-webhook', requireAdmin, async (req: Request, res: Response) => {
@@ -445,26 +506,60 @@ app.post('/api/admin/bot/delete-webhook', requireAdmin, async (req: Request, res
     return res.status(400).json({ error: result.description });
   }
 
+  await db.atomic((d) => {
+    d.bot_settings.webhook_url = undefined;
+    d.bot_settings.webhook_secret = undefined;
+    d.bot_settings.last_webhook_error = undefined;
+  });
+
   await logAction(admin.username, 'WEBHOOK_DELETED', 'Telegram Bot', 'Switched to Long Polling');
   res.json({ success: true, message: result.description });
 });
 
 // Public Telegram Webhook Endpoint (Receives updates from Telegram servers)
+// No admin auth, no cookies, no redirects!
 app.post(['/api/telegram-webhook', '/api/webhook', '/telegram-webhook', '/api/bot-webhook'], async (req: Request, res: Response) => {
+  const settings = db.getRaw().bot_settings;
+  const configuredSecret = settings.webhook_secret;
+
+  // Protect using Telegram's official secret_token mechanism
+  const incomingSecret = req.headers['x-telegram-bot-api-secret-token'];
+  if (configuredSecret && incomingSecret !== configuredSecret) {
+    console.warn('[Telegram Webhook] 401 Unauthorized: Invalid X-Telegram-Bot-Api-Secret-Token');
+    return res.status(401).json({ error: 'Unauthorized: Invalid secret token' });
+  }
+
+  let update = req.body;
+  if (typeof update === 'string') {
+    try { update = JSON.parse(update); } catch {}
+  }
+
+  // Safe server-side logging without logging any tokens, keys, secrets, or passwords
+  const updateId = update?.update_id;
+  const messageType = update?.message?.text
+    ? 'text_message'
+    : (update?.callback_query ? 'callback_query' : 'other_update');
+
+  console.log(`[Telegram Webhook] Received update_id=${updateId} type=${messageType}`);
+
   try {
-    let update = req.body;
-    if (typeof update === 'string') {
-      try { update = JSON.parse(update); } catch {}
-    }
-    const settings = db.getRaw().bot_settings;
     const token = cleanBotToken(settings.main_bot_token || process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || (globalThis as any).__ETEBOX_BOT_TOKEN__ || '');
     if (token && update) {
+      await db.atomic((d) => {
+        d.bot_settings.last_update_received_at = new Date().toISOString();
+        if (updateId) d.bot_settings.last_update_id = updateId;
+        d.bot_settings.last_webhook_error = undefined;
+      });
+
+      // Process update
       await telegramBot.handleUpdate(update, token);
     }
   } catch (err: any) {
     console.error('[Telegram Webhook] Error processing update:', err.message);
   }
-  res.status(200).json({ ok: true });
+
+  // Return HTTP 200 quickly to Telegram
+  return res.status(200).json({ ok: true });
 });
 
 // -----------------------------------------------------------------------------

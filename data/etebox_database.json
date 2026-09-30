@@ -40,7 +40,7 @@
       "total_earned": 6,
       "total_spent": 0,
       "registered_at": "2026-09-29T14:30:59.364Z",
-      "last_activity_at": "2026-09-30T13:40:44.565Z",
+      "last_activity_at": "2026-09-30T14:14:50.554Z",
       "verification_status": "verified",
       "last_verification_at": "2026-09-29T14:30:59.364Z",
       "failed_verification_attempts": 0,
@@ -99,6 +99,30 @@
     }
   },
   "admin_logs": [
+    {
+      "id": "0073c94c-609a-46ed-bfbb-1b739848fcff",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-09-30T15:26:22.203Z"
+    },
+    {
+      "id": "02cf0c21-59fc-417a-975d-39aa9d56ea32",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-09-30T15:25:50.868Z"
+    },
+    {
+      "id": "33597e0c-f08a-4200-a2d4-1a304ff8c579",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-09-30T15:25:43.247Z"
+    },
     {
       "id": "cf974148-67c7-4b68-8d73-ec9bcfcaba22",
       "admin_username": "Abood",

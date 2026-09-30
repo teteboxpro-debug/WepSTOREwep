@@ -61,6 +61,7 @@ export class TelegramBotService {
 
       clearTimeout(timeoutId);
 
+      console.log(`[Telegram API] ${method} -> response status: ${res.status}`);
       const data = await res.json().catch(() => ({ ok: false, description: 'Invalid response from Telegram API' }));
       if (!data.ok) {
         console.warn(`[Telegram API] ${method} error response:`, data.description || data);
@@ -115,19 +116,27 @@ export class TelegramBotService {
     return res.result;
   }
 
-  public async setWebhook(token: string, webhookUrl: string): Promise<{ success: boolean; description?: string }> {
+  public async setWebhook(token: string, webhookUrl: string, secretToken?: string): Promise<{ success: boolean; description?: string }> {
     this.stopBot();
     const cleanToken = cleanBotToken(token);
     const cleanUrl = webhookUrl.trim();
-    const res = await this.apiCall(cleanToken, 'setWebhook', {
+    const payload: Record<string, any> = {
       url: cleanUrl,
       drop_pending_updates: false,
       allowed_updates: ['message', 'callback_query']
-    });
+    };
+    if (secretToken) {
+      payload.secret_token = secretToken;
+    }
+    const res = await this.apiCall(cleanToken, 'setWebhook', payload);
 
     if (res.ok) {
       await db.atomic((d) => {
         d.bot_settings.status = 'online';
+        d.bot_settings.webhook_url = cleanUrl;
+        if (secretToken) {
+          d.bot_settings.webhook_secret = secretToken;
+        }
         d.bot_settings.last_error = undefined;
       });
       return { success: true, description: res.description || 'Webhook registered successfully' };
