@@ -1209,7 +1209,25 @@ async function bootstrap() {
   });
 }
 
-if (!process.env.VERCEL) {
+// Only start the standalone HTTP listener & Vite dev server when server.ts is executed directly as main script
+// When imported as a serverless function handler (e.g. by Vercel in api/index.ts), DO NOT call bootstrap() or app.listen()
+const isServerless = Boolean(
+  process.env.VERCEL ||
+  process.env.VERCEL_ENV ||
+  process.env.AWS_LAMBDA_FUNCTION_NAME ||
+  process.env.LAMBDA_TASK_ROOT ||
+  process.env.NOW_REGION
+);
+
+const isMainModule = !isServerless && Boolean(
+  process.argv[1] && (
+    process.argv[1].endsWith('server.ts') ||
+    process.argv[1].endsWith('server.js') ||
+    process.argv[1].endsWith('server.mjs')
+  )
+);
+
+if (isMainModule) {
   bootstrap().catch((err) => {
     console.error('[Etebox System] Fatal bootstrap error:', err);
   });
