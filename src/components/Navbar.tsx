@@ -13,7 +13,8 @@ import {
   UserCheck,
   Smartphone,
   Menu,
-  X
+  X,
+  LogOut
 } from 'lucide-react';
 import type { AdminUser } from '../types';
 
@@ -129,6 +130,22 @@ export default function Navbar({
               <span className="hidden sm:inline">Bot Live Emulator</span>
               <span className="sm:hidden">Simulator</span>
             </button>
+
+            {/* Admin User & Logout */}
+            <div className="hidden md:flex items-center gap-2 pl-2 border-l border-slate-800">
+              <span className="text-xs text-slate-300 font-medium px-2 py-1 bg-slate-800/80 rounded-lg border border-slate-700/50">
+                👤 {admin?.username || 'Abood'}
+              </span>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+                  title="تسجيل الخروج (Logout)"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -183,6 +200,19 @@ export default function Navbar({
                 <Smartphone className="w-4 h-4" />
                 <span>Open Bot Simulator</span>
               </button>
+
+              {onLogout && (
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onLogout();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-xl text-sm font-medium hover:bg-rose-500/20 transition"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>تسجيل الخروج ({admin?.username || 'Abood'})</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

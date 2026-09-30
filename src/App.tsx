@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { apiRequest, getAuthToken, setAuthToken } from './api';
+import { apiRequest, getAuthToken, clearAuthToken } from './api';
 import type { AdminUser, BotSettingsData } from './types';
+import LoginView from './components/LoginView';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
@@ -23,40 +24,35 @@ const defaultAdmin: AdminUser = {
 };
 
 export default function App() {
-  const [admin, setAdmin] = useState<AdminUser>(defaultAdmin);
+  const [admin, setAdmin] = useState<AdminUser | null>(() => {
+    const token = getAuthToken();
+    return token ? defaultAdmin : null;
+  });
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [botStatus, setBotStatus] = useState<'online' | 'offline' | 'token_invalid' | 'telegram_error'>('offline');
   const [botUsername, setBotUsername] = useState<string | undefined>();
   const [botFirstName, setBotFirstName] = useState<string | undefined>();
   const [emulatorOpen, setEmulatorOpen] = useState(false);
 
-  // Background silent auto-login for user 'Abood' (password: '321325')
-  // Automatically establishes authenticated session and stores bearer token
-  // without displaying any login screen or password prompt in the UI
+  // Handle session expiration
   useEffect(() => {
-    const performSilentLogin = async () => {
-      try {
-        const token = getAuthToken();
-        if (!token) {
-          const res = await apiRequest<{ token: string; admin: AdminUser }>('/admin/login', {
-            method: 'POST',
-            body: JSON.stringify({ username: 'Abood', password: '321325' })
-          });
-          if (res.token) {
-            setAuthToken(res.token);
-            if (res.admin) setAdmin(res.admin);
-          }
-        }
-      } catch (err) {
-        console.warn('[Silent Auth] Running with direct session');
-      }
+    const handleAuthExpired = () => {
+      clearAuthToken();
+      setAdmin(null);
     };
-
-    performSilentLogin();
+    window.addEventListener('auth_expired', handleAuthExpired);
+    return () => window.removeEventListener('auth_expired', handleAuthExpired);
   }, []);
 
-  // Poll bot status
+  const handleLogout = () => {
+    clearAuthToken();
+    setAdmin(null);
+  };
+
+  // Poll bot status when logged in
   useEffect(() => {
+    if (!admin) return;
+
     const fetchBotStatus = async () => {
       try {
         const res = await apiRequest<BotSettingsData>('/admin/bot/settings');
@@ -71,7 +67,12 @@ export default function App() {
     fetchBotStatus();
     const interval = setInterval(fetchBotStatus, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [admin]);
+
+  // If user is not authenticated, show the secure Login Screen
+  if (!admin) {
+    return <LoginView onSuccess={(user) => setAdmin(user)} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased">
@@ -82,7 +83,7 @@ export default function App() {
         admin={admin}
         botStatus={botStatus}
         botUsername={botUsername}
-        onLogout={() => {}}
+        onLogout={handleLogout}
         onOpenEmulator={() => setEmulatorOpen(true)}
       />
 
