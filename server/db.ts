@@ -300,6 +300,26 @@ export interface ScheduledDeleteMessage {
   delete_at: number; // Unix timestamp in ms
 }
 
+export interface VideoPackage {
+  id: string;
+  name: string;
+  video_count: number;
+  stars_price: number;
+  video_urls: string[];
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface VideoPackagePurchase {
+  id: string;
+  user_id: string;
+  package_id: string;
+  package_name: string;
+  stars_paid: number;
+  video_urls: string[];
+  purchased_at: string;
+}
+
 export interface DatabaseSchema {
   users: Record<string, User>;
   admins: Record<string, Admin>;
@@ -317,6 +337,8 @@ export interface DatabaseSchema {
   broadcasts: Broadcast[];
   game_records: GameRecord[];
   scheduled_deletions: ScheduledDeleteMessage[];
+  video_packages: VideoPackage[];
+  video_package_purchases: VideoPackagePurchase[];
 }
 
 function getInitialDatabase(): DatabaseSchema {
@@ -469,7 +491,9 @@ function getInitialDatabase(): DatabaseSchema {
     human_verifications: {},
     broadcasts: [],
     game_records: [],
-    scheduled_deletions: []
+    scheduled_deletions: [],
+    video_packages: [],
+    video_package_purchases: []
   };
 }
 
@@ -500,6 +524,12 @@ class DatabaseManager {
             required_stars: typeof c.required_stars === 'number' ? c.required_stars : 0
           }));
         }
+        if (!Array.isArray(merged.video_packages)) {
+          merged.video_packages = [];
+        }
+        if (!Array.isArray(merged.video_package_purchases)) {
+          merged.video_package_purchases = [];
+        }
         return merged;
       }
       if (isVercel && fs.existsSync(SEED_FILE)) {
@@ -511,6 +541,12 @@ class DatabaseManager {
           ...parsed,
           bot_settings: { ...defaults.bot_settings, ...parsed.bot_settings }
         };
+        if (!Array.isArray(merged.video_packages)) {
+          merged.video_packages = [];
+        }
+        if (!Array.isArray(merged.video_package_purchases)) {
+          merged.video_package_purchases = [];
+        }
         this.saveSync(merged);
         return merged;
       }

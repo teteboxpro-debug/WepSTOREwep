@@ -40,11 +40,12 @@ export default function BotEmulatorModal({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeReplyKeyboard, setActiveReplyKeyboard] = useState<string[][]>([
-    ['🆓 FREE 1 VIDEOS', '💰 My Balance'],
-    ['⭐ Buy Stars', '📺 Channels'],
-    ['📁 Files', '🛒 Enter Store'],
-    ['🔄 Backup Bot', '👥 Refer & Earn'],
-    ['🎮 Games']
+    ['🎬 Bᴜʏ Vɪᴅᴇᴏs'],
+    ['🆓 Fʀᴇᴇ 1 Vɪᴅᴇᴏs', '💰 Mʏ Bᴀʟᴀɴᴄᴇ'],
+    ['⭐ Bᴜʏ Sᴛᴀʀs', '📺 Cʜᴀɴɴᴇʟs'],
+    ['📁 Fɪʟᴇs', '🛒 Eɴᴛᴇʀ Sᴛᴏʀᴇ'],
+    ['🔄 Bᴀᴄᴋᴜᴘ Bᴏᴛ', '👥 Rᴇғᴇʀ & Eᴀʀɴ'],
+    ['🎮 Gᴀᴍᴇs']
   ]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);

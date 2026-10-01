@@ -10,7 +10,8 @@ import {
   Gamepad2,
   FileText,
   UserCheck,
-  Smartphone
+  Smartphone,
+  Video
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -23,6 +24,7 @@ export default function Sidebar({ currentTab, onSelectTab, onOpenEmulator }: Sid
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'bot_settings', label: 'Bot Settings', icon: Bot },
+    { id: 'buy_videos', label: '🎬 BUY VIDEOS', icon: Video },
     { id: 'users', label: 'User Management', icon: Users },
     { id: 'free_videos', label: 'FREE 1 VIDEOS', icon: Film },
     { id: 'files', label: 'Paid Files', icon: FileBox },

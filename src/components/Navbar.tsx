@@ -14,7 +14,8 @@ import {
   Smartphone,
   Menu,
   X,
-  LogOut
+  LogOut,
+  Video
 } from 'lucide-react';
 import type { AdminUser } from '../types';
 
@@ -42,6 +43,7 @@ export default function Navbar({
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'bot_settings', label: 'Bot Settings', icon: Bot },
+    { id: 'buy_videos', label: '🎬 BUY VIDEOS', icon: Video },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'free_videos', label: 'Free 1 Videos', icon: Film },
     { id: 'files', label: 'Paid Files', icon: FileBox },

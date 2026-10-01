@@ -255,7 +255,7 @@ app.get('/api/admin/stats', requireAdmin, (req: Request, res: Response) => {
   const totalStarsCirculation = users.reduce((sum, u) => sum + (u.balance || 0), 0);
   const autoRewardsGiven = raw.star_transactions.filter((t) => t.type === 'AUTO_REWARD').length;
   const totalReferrals = raw.referrals.filter((r) => r.status === 'qualified').length;
-  const totalPurchases = raw.file_purchases.length;
+  const totalPurchases = (raw.file_purchases?.length || 0) + (raw.video_package_purchases?.length || 0);
   const totalFreeVideos = raw.free_videos.filter((v) => v.is_active).length;
   const totalFiles = raw.files.filter((f) => f.is_active).length;
   const totalChannels = raw.channels.filter((c) => c.is_active).length;
@@ -830,6 +830,91 @@ app.delete('/api/admin/free-videos/:id', requireAdmin, async (req: Request, res:
   if (!deleted) return res.status(404).json({ error: 'Video not found' });
 
   await logAction(admin.username, 'FREE_VIDEO_DELETED', deleted.title, `Removed from catalog`);
+  res.json({ success: true });
+});
+
+// -----------------------------------------------------------------------------
+// 5.5. BUY VIDEOS MANAGEMENT (Video Packages & Purchases)
+// -----------------------------------------------------------------------------
+app.get('/api/admin/video-packages', requireAdmin, (req: Request, res: Response) => {
+  res.json({ packages: db.getRaw().video_packages || [] });
+});
+
+app.get('/api/admin/video-package-purchases', requireAdmin, (req: Request, res: Response) => {
+  res.json({ purchases: (db.getRaw().video_package_purchases || []).slice().reverse() });
+});
+
+app.post('/api/admin/video-packages', requireAdmin, async (req: Request, res: Response) => {
+  const admin = (req as any).admin;
+  const { name, video_count, stars_price, video_urls, is_active } = req.body;
+
+  if (!name || !video_urls || !Array.isArray(video_urls)) {
+    return res.status(400).json({ error: 'Package name and video URLs are required' });
+  }
+
+  const count = parseInt(video_count, 10) || video_urls.length || 1;
+  const newPackage = {
+    id: 'vpkg_' + crypto.randomUUID().slice(0, 8),
+    name: name.trim(),
+    video_count: count,
+    stars_price: Math.max(1, parseInt(stars_price, 10) || 10),
+    video_urls: video_urls.map((u: string) => (u || '').toString().trim()),
+    is_active: is_active ?? true,
+    created_at: new Date().toISOString()
+  };
+
+  await db.atomic((d) => {
+    if (!Array.isArray(d.video_packages)) d.video_packages = [];
+    d.video_packages.unshift(newPackage);
+  });
+
+  await logAction(admin.username, 'VIDEO_PACKAGE_CREATED', newPackage.name, `${newPackage.video_count} Videos, ⭐ ${newPackage.stars_price}`);
+  res.json({ success: true, package: newPackage });
+});
+
+app.put('/api/admin/video-packages/:id', requireAdmin, async (req: Request, res: Response) => {
+  const admin = (req as any).admin;
+  const id = req.params.id;
+  const updates = req.body;
+
+  if (updates.video_count !== undefined) {
+    updates.video_count = parseInt(updates.video_count, 10) || 1;
+  }
+  if (updates.stars_price !== undefined) {
+    updates.stars_price = Math.max(1, parseInt(updates.stars_price, 10) || 10);
+  }
+  if (updates.video_urls && Array.isArray(updates.video_urls)) {
+    updates.video_urls = updates.video_urls.map((u: string) => (u || '').toString().trim());
+  }
+
+  const updated = await db.atomic((d) => {
+    if (!Array.isArray(d.video_packages)) d.video_packages = [];
+    const index = d.video_packages.findIndex((p) => p.id === id);
+    if (index === -1) return null;
+    d.video_packages[index] = { ...d.video_packages[index], ...updates };
+    return d.video_packages[index];
+  });
+
+  if (!updated) return res.status(404).json({ error: 'Video package not found' });
+
+  await logAction(admin.username, 'VIDEO_PACKAGE_UPDATED', updated.name, 'Updated video package details');
+  res.json({ success: true, package: updated });
+});
+
+app.delete('/api/admin/video-packages/:id', requireAdmin, async (req: Request, res: Response) => {
+  const admin = (req as any).admin;
+  const id = req.params.id;
+
+  const deleted = await db.atomic((d) => {
+    if (!Array.isArray(d.video_packages)) d.video_packages = [];
+    const index = d.video_packages.findIndex((p) => p.id === id);
+    if (index === -1) return null;
+    return d.video_packages.splice(index, 1)[0];
+  });
+
+  if (!deleted) return res.status(404).json({ error: 'Video package not found' });
+
+  await logAction(admin.username, 'VIDEO_PACKAGE_DELETED', deleted.name, 'Removed video package');
   res.json({ success: true });
 });
 

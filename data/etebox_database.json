@@ -32,6 +32,22 @@
       "referral_count": 0,
       "last_auto_reward_at": "2026-09-30T14:11:24.431Z"
     },
+    "77889911": {
+      "id": "77889911",
+      "username": "TestUser",
+      "first_name": "John",
+      "balance": 78,
+      "total_earned": 103,
+      "total_spent": 25,
+      "registered_at": "2026-10-01T20:59:02.627Z",
+      "last_activity_at": "2026-10-01T20:59:02.627Z",
+      "verification_status": "verified",
+      "last_verification_at": "2026-10-01T20:59:02.627Z",
+      "failed_verification_attempts": 0,
+      "is_banned": false,
+      "referral_count": 0,
+      "last_auto_reward_at": "2026-10-01T20:59:02.628Z"
+    },
     "88991122": {
       "id": "88991122",
       "username": "testuser",
@@ -99,6 +115,38 @@
     }
   },
   "admin_logs": [
+    {
+      "id": "954534a7-1721-40e8-9e0d-93adeaacf840",
+      "admin_username": "Abood",
+      "action": "USER_BALANCE_ADJUSTED",
+      "target": "User 77889911",
+      "details": "+100 Stars. Reason: Test Credit",
+      "timestamp": "2026-10-01T20:59:11.091Z"
+    },
+    {
+      "id": "7f3c0b49-a8b4-4bb1-af6c-9c7051de9604",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-10-01T20:59:11.074Z"
+    },
+    {
+      "id": "4ec629b6-12d3-4a24-9187-cce899f374e7",
+      "admin_username": "Abood",
+      "action": "VIDEO_PACKAGE_CREATED",
+      "target": "VIP Action Pack",
+      "details": "3 Videos, ⭐ 25",
+      "timestamp": "2026-10-01T20:59:02.613Z"
+    },
+    {
+      "id": "49801be8-0223-425b-9a1a-e335093a89d1",
+      "admin_username": "Abood",
+      "action": "LOGIN",
+      "target": "Admin Auth",
+      "details": "Successful login to Admin Panel",
+      "timestamp": "2026-10-01T20:59:02.593Z"
+    },
     {
       "id": "0073c94c-609a-46ed-bfbb-1b739848fcff",
       "admin_username": "Abood",
@@ -403,6 +451,37 @@
       "type": "AUTO_REWARD",
       "description": "8-Hour Auto Reward (+3 Stars)",
       "timestamp": "2026-09-30T14:11:24.431Z"
+    },
+    {
+      "id": "fd5cd5a9-6bbf-4a75-b83f-e9fa4a1483a9",
+      "user_id": "77889911",
+      "amount": 3,
+      "balance_before": 0,
+      "balance_after": 3,
+      "type": "AUTO_REWARD",
+      "description": "8-Hour Auto Reward (+3 Stars)",
+      "timestamp": "2026-10-01T20:59:02.628Z"
+    },
+    {
+      "id": "f7ef4fbd-1dfc-4dc0-8799-25f894a4892b",
+      "user_id": "77889911",
+      "amount": 100,
+      "balance_before": 3,
+      "balance_after": 103,
+      "type": "ADMIN_ADD",
+      "description": "Test Credit",
+      "timestamp": "2026-10-01T20:59:11.090Z",
+      "admin_id": "admin_initial"
+    },
+    {
+      "id": "1ebac773-2245-4335-8bff-d75363392fb2",
+      "user_id": "77889911",
+      "amount": -25,
+      "balance_before": 103,
+      "balance_after": 78,
+      "type": "PURCHASE",
+      "description": "Purchased Video Package: VIP Action Pack",
+      "timestamp": "2026-10-01T20:59:11.102Z"
     }
   ],
   "star_packages": [
@@ -574,5 +653,35 @@
       "timestamp": "2026-09-28T19:55:17.310Z"
     }
   ],
-  "scheduled_deletions": []
+  "scheduled_deletions": [],
+  "video_packages": [
+    {
+      "id": "vpkg_249988cb",
+      "name": "VIP Action Pack",
+      "video_count": 3,
+      "stars_price": 25,
+      "video_urls": [
+        "https://example.com/v1.mp4",
+        "https://example.com/v2.mp4",
+        "https://example.com/v3.mp4"
+      ],
+      "is_active": true,
+      "created_at": "2026-10-01T20:59:02.613Z"
+    }
+  ],
+  "video_package_purchases": [
+    {
+      "id": "828f0c87-709b-4a68-a971-fa537b3f3ccc",
+      "user_id": "77889911",
+      "package_id": "vpkg_249988cb",
+      "package_name": "VIP Action Pack",
+      "stars_paid": 25,
+      "video_urls": [
+        "https://example.com/v1.mp4",
+        "https://example.com/v2.mp4",
+        "https://example.com/v3.mp4"
+      ],
+      "purchased_at": "2026-10-01T20:59:11.102Z"
+    }
+  ]
 }

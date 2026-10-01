@@ -1,4 +1,4 @@
-import { db, User, FreeVideo, PaidFile } from './db.js';
+import { db, User, FreeVideo, PaidFile, VideoPackage, VideoPackagePurchase } from './db.js';
 import crypto from 'node:crypto';
 
 // Cleans bot token of any mobile copy-paste artifacts:
@@ -260,18 +260,21 @@ export class TelegramBotService {
     }
   }
 
-  // Main menu keyboard markup in EXACT required order
+  // Main menu inline keyboard markup with decorative Unicode style (no persistent reply keyboard)
   public getMainMenuKeyboard() {
+    const raw = db.getRaw();
+    const storeUrl = raw.bot_settings?.store_url || 'https://etebox.com/store';
+    const backupUrl = raw.bot_settings?.backup_bot_url || 'https://t.me/EteboxBackupBot';
+
     return {
-      keyboard: [
-        [{ text: '🆓 FREE 1 VIDEOS' }, { text: '💰 My Balance' }],
-        [{ text: '⭐ Buy Stars' }, { text: '📺 Channels' }],
-        [{ text: '📁 Files' }, { text: '🛒 Enter Store' }],
-        [{ text: '🔄 Backup Bot' }, { text: '👥 Refer & Earn' }],
-        [{ text: '🎮 Games' }]
-      ],
-      resize_keyboard: true,
-      is_persistent: true
+      inline_keyboard: [
+        [{ text: '🎬 Bᴜʏ Vɪᴅᴇᴏs', callback_data: 'menu_buy_videos' }],
+        [{ text: '🆓 Fʀᴇᴇ 1 Vɪᴅᴇᴏs', callback_data: 'menu_free_videos' }, { text: '💰 Mʏ Bᴀʟᴀɴᴄᴇ', callback_data: 'menu_my_balance' }],
+        [{ text: '⭐ Bᴜʏ Sᴛᴀʀs', callback_data: 'menu_buy_stars' }, { text: '📺 Cʜᴀɴɴᴇʟs', callback_data: 'menu_channels' }],
+        [{ text: '📁 Fɪʟᴇs', callback_data: 'menu_files' }, { text: '🛒 Eɴᴛᴇʀ Sᴛᴏʀᴇ', url: storeUrl }],
+        [{ text: '🔄 Bᴀᴄᴋᴜᴘ Bᴏᴛ', url: backupUrl }, { text: '👥 Rᴇғᴇʀ & Eᴀʀɴ', callback_data: 'menu_refer_earn' }],
+        [{ text: '🎮 Gᴀᴍᴇs', callback_data: 'menu_games' }]
+      ]
     };
   }
 
@@ -545,7 +548,7 @@ export class TelegramBotService {
     if (cleanLower.startsWith('/redeem') || cleanLower.startsWith('redeem ') || clean.startsWith('كود ') || clean.startsWith('شحن ')) {
       const codePart = clean.replace(/^(\/?redeem|كود|شحن)\s*/i, '').trim();
       if (!codePart) {
-        const msg = 'ℹ️ To redeem a code, send:\n`/redeem YOUR_CODE`\n\nأو أرسل: كود الكود_الخاص_بك';
+        const msg = 'ℹ️ To redeem a Stars code, send:\n`/redeem YOUR_CODE`';
         if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, parse_mode: 'Markdown' });
         return { text: msg };
       }
@@ -554,236 +557,116 @@ export class TelegramBotService {
       return { text: redeemRes.message };
     }
 
-    // Button 1: 🆓 FREE 1 VIDEOS (or Arabic)
+    // New Menu Button: 🎬 Bᴜʏ Vɪᴅᴇᴏs
     if (
-      clean === '🆓 FREE 1 VIDEOS' ||
-      clean.includes('FREE 1 VIDEOS') ||
-      cleanLower === '/free' ||
-      clean.includes('فيديو') ||
-      clean.includes('مجاني')
+      clean.includes('Bᴜʏ Vɪᴅᴇᴏs') ||
+      cleanLower.includes('buy videos') ||
+      cleanLower === '/buyvideos' ||
+      clean.includes('فيديوهات') ||
+      clean.includes('شراء')
     ) {
-      const videos = db.getRaw().free_videos.filter((v) => v.is_active);
-      if (videos.length === 0) {
-        const msg = '🆓 FREE 1 VIDEOS (فيديوهات مجانية)\n\nلا توجد فيديوهات مجانية متاحة حالياً. تفقد البوت لاحقاً!';
-        if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: keyboard });
-        return { text: msg, replyMarkup: keyboard };
-      }
-
-      const inlineButtons = videos.map((v) => [
-        { text: v.title || '🎬 Free Video', callback_data: `free_vid_${v.id}` }
-      ]);
-
-      const msg = `🆓 FREE 1 VIDEOS (فيديوهات مجانية)\n\nاختر الفيديو المجاني الذي ترغب بمشاهدته:`;
-      if (token) {
-        await this.apiCall(token, 'sendMessage', {
-          chat_id: chatId,
-          text: msg,
-          reply_markup: { inline_keyboard: inlineButtons }
-        });
-      }
-      return { text: msg, replyMarkup: { inline_keyboard: inlineButtons } };
+      return await this.handleBuyVideosMenu(chatId, userId, token);
     }
 
-    // Button 2: 💰 My Balance (or Arabic: 💰 رصيدي)
+    // Button 1: 🆓 Fʀᴇᴇ 1 Vɪᴅᴇᴏs
     if (
-      clean === '💰 My Balance' ||
+      clean.includes('FREE 1 VIDEOS') ||
+      clean.includes('Fʀᴇᴇ 1 Vɪᴅᴇᴏs') ||
+      clean.includes('Fʀᴇᴇ Vɪᴅᴇᴏs') ||
+      cleanLower === '/free' ||
+      clean.includes('مجاني')
+    ) {
+      return await this.handleFreeVideosMenu(chatId, token);
+    }
+
+    // Button 2: 💰 Mʏ Bᴀʟᴀɴᴄᴇ
+    if (
       clean.includes('My Balance') ||
+      clean.includes('Mʏ Bᴀʟᴀɴᴄᴇ') ||
       cleanLower === '/balance' ||
       clean.includes('رصيدي') ||
       clean.includes('رصيد')
     ) {
-      const refreshedUser = db.getRaw().users[userId] || user;
-      const msg = `💰 YOUR BALANCE (رصيدك الحالي)\n\n⭐ Stars (النجوم): ${refreshedUser.balance}\n\nإجمالي المكتسب: ${refreshedUser.total_earned}\nإجمالي المصروف: ${refreshedUser.total_spent}\nعدد الإحالات: ${refreshedUser.referral_count}`;
-      const inlineKeyboard = {
-        inline_keyboard: [
-          [{ text: '⭐ اشترِ النجوم (Buy Stars)', callback_data: 'nav_buy_stars' }, { text: '🔑 إدخال كود (Redeem Code)', callback_data: 'nav_redeem_prompt' }]
-        ]
-      };
-      if (token) {
-        await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: inlineKeyboard });
-      }
-      return { text: msg, replyMarkup: inlineKeyboard };
+      return await this.handleMyBalanceMenu(chatId, userId, token);
     }
 
-    // Button 3: ⭐ Buy Stars (or Arabic: ⭐ اشترِ النجوم)
+    // Button 3: ⭐ Bᴜʏ Sᴛᴀʀs
     if (
-      clean === '⭐ Buy Stars' ||
       clean.includes('Buy Stars') ||
+      clean.includes('Bᴜʏ Sᴛᴀʀs') ||
       cleanLower === '/buy' ||
       clean.includes('اشترِ النجوم') ||
-      clean.includes('شراء النجوم') ||
-      clean.includes('اشتر النجوم')
+      clean.includes('شراء النجوم')
     ) {
-      const packages = db.getRaw().star_packages.filter((p) => p.is_active);
-      const packageButtons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = packages.map((pkg) => [
-        { text: `${pkg.name} — $${pkg.price_usd}`, url: pkg.payment_url }
-      ]);
-      packageButtons.push([{ text: '🔑 إدخال كود النجوم', callback_data: 'nav_redeem_prompt' }]);
-
-      const msg = `⭐ BUY STARS (شراء النجوم)\n\nاختر الباقة المناسبة لشحن رصيد النجوم في حسابك:\n\n*(تنويه: هذه نقاط داخلية داخل التطبيق ولا يمكن تحويلها لأموال نقدية خارج التطبيق.)*`;
-      if (token) {
-        await this.apiCall(token, 'sendMessage', {
-          chat_id: chatId,
-          text: msg,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: packageButtons }
-        });
-      }
-      return { text: msg, replyMarkup: { inline_keyboard: packageButtons } };
+      return await this.handleBuyStarsMenu(chatId, token);
     }
 
-    // Button 4: 📺 Channels (or Arabic: 📺 القنوات)
+    // Button 4: 📺 Cʜᴀɴɴᴇʟs
     if (
-      clean === '📺 Channels' ||
       clean.includes('Channels') ||
+      clean.includes('Cʜᴀɴɴᴇʟs') ||
       cleanLower === '/channels' ||
       clean.includes('القنوات') ||
       clean.includes('قنوات')
     ) {
-      const channels = db.getRaw().channels.filter((c) => c.is_active).sort((a, b) => a.display_order - b.display_order);
-      if (channels.length === 0) {
-        const msg = '📺 Channels (القنوات)\n\nلا توجد قنوات رسمية مضافة حالياً.';
-        if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: keyboard });
-        return { text: msg, replyMarkup: keyboard };
-      }
-
-      const refreshedUser = db.getRaw().users[userId] || user;
-      const unlockedSet = new Set(refreshedUser.unlocked_channels || []);
-
-      const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = channels.map((c) => {
-        const reqStars = typeof c.required_stars === 'number' ? c.required_stars : 0;
-        if (reqStars <= 0) {
-          return [{ text: `📢 ${c.name} (مجاني)`, url: c.url }];
-        } else if (unlockedSet.has(c.id)) {
-          return [{ text: `🔓 ${c.name} (مفتوح)`, url: c.url }];
-        } else {
-          return [{ text: `🔒 ${c.name} — ⭐ ${reqStars}`, callback_data: `chan_view_${c.id}` }];
-        }
-      });
-
-      const msg = `📺 OFFICIAL CHANNELS (القنوات الرسمية)\n\nاختر قناة للانضمام أو فتحها باستخدام النجوم:`;
-      if (token) {
-        await this.apiCall(token, 'sendMessage', {
-          chat_id: chatId,
-          text: msg,
-          reply_markup: { inline_keyboard: buttons }
-        });
-      }
-      return { text: msg, replyMarkup: { inline_keyboard: buttons } };
+      return await this.handleChannelsMenu(chatId, userId, token);
     }
 
-    // Button 5: 📁 Files (or Arabic: 📁 الملفات)
+    // Button 5: 📁 Fɪʟᴇs
     if (
-      clean === '📁 Files' ||
       clean.includes('Files') ||
+      clean.includes('Fɪʟᴇs') ||
       cleanLower === '/files' ||
       clean.includes('الملفات') ||
       clean.includes('ملفات')
     ) {
-      const files = db.getRaw().files.filter((f) => f.is_active);
-      if (files.length === 0) {
-        const msg = '📁 FILES (الملفات)\n\nلا توجد ملفات مدفوعة متاحة في الكتالوج حالياً.';
-        if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: keyboard });
-        return { text: msg, replyMarkup: keyboard };
-      }
-
-      const buttons = files.map((f) => [
-        { text: `🎬 ${f.file_name} — ⭐ ${f.price_stars}`, callback_data: `file_detail_${f.id}` }
-      ]);
-
-      const msg = `📁 PREMIUM FILES (الملفات الحصرية)\n\nاختر ملفاً لعرض العينة أو شرائه بالنجوم:`;
-      if (token) {
-        await this.apiCall(token, 'sendMessage', {
-          chat_id: chatId,
-          text: msg,
-          reply_markup: { inline_keyboard: buttons }
-        });
-      }
-      return { text: msg, replyMarkup: { inline_keyboard: buttons } };
+      return await this.handleFilesMenu(chatId, token);
     }
 
-    // Button 6: 🛒 Enter Store (or Arabic: 🛒 ادخل المتجر)
+    // Button 6: 🛒 Eɴᴛᴇʀ Sᴛᴏʀᴇ
     if (
-      clean === '🛒 Enter Store' ||
       clean.includes('Enter Store') ||
+      clean.includes('Eɴᴛᴇʀ Sᴛᴏʀᴇ') ||
       cleanLower === '/store' ||
-      clean.includes('المتجر') ||
-      clean.includes('متجر')
+      clean.includes('المتجر')
     ) {
-      const storeUrl = db.getRaw().bot_settings.store_url || 'https://etebox.com/store';
-      const msg = `🛒 ENTER STORE (المتجر الرسمي)\n\nاضغط على الزر أدناه للدخول إلى المتجر:`;
-      const markup = {
-        inline_keyboard: [[{ text: '🛒 فتح المتجر', url: storeUrl }]]
-      };
-      if (token) {
-        await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
-      }
-      return { text: msg, replyMarkup: markup };
+      return await this.handleStoreMenu(chatId, token);
     }
 
-    // Button 7: 🔄 Backup Bot (or Arabic: 🔄 بوت النسخ الاحتياطي)
+    // Button 7: 🔄 Bᴀᴄᴋᴜᴘ Bᴏᴛ
     if (
-      clean === '🔄 Backup Bot' ||
       clean.includes('Backup Bot') ||
+      clean.includes('Bᴀᴄᴋᴜᴘ Bᴏᴛ') ||
       cleanLower === '/backup' ||
-      clean.includes('الاحتياطي') ||
-      clean.includes('احتياطي')
+      clean.includes('الاحتياطي')
     ) {
-      const backupUrl = db.getRaw().bot_settings.backup_bot_url || 'https://t.me/EteboxBackupBot';
-      const msg = `🔄 BACKUP BOT (بوت النسخ الاحتياطي)\n\nفي حال صيانة هذا البوت، يمكنك استخدام البوت الاحتياطي للوصول لكافة نقاطك ومشترياتك:`;
-      const markup = {
-        inline_keyboard: [[{ text: '🔄 فتح البوت الاحتياطي', url: backupUrl }]]
-      };
-      if (token) {
-        await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
-      }
-      return { text: msg, replyMarkup: markup };
+      return await this.handleBackupBotMenu(chatId, token);
     }
 
-    // Button 8: 👥 Refer & Earn (or Arabic: 👥 اربح من خلال الإحالة)
+    // Button 8: 👥 Rᴇғᴇʀ & Eᴀʀɴ
     if (
-      clean === '👥 Refer & Earn' ||
       clean.includes('Refer & Earn') ||
+      clean.includes('Rᴇғᴇʀ & Eᴀʀɴ') ||
       cleanLower === '/refer' ||
       clean.includes('الإحالة') ||
-      clean.includes('احالة') ||
-      clean.includes('اربح من خلال')
+      clean.includes('احالة')
     ) {
-      const botUsername = db.getRaw().bot_settings.main_bot_username || 'YOUR_BOT';
-      const refLink = `https://t.me/${botUsername}?start=ref_${userId}`;
-      const refreshed = db.getRaw().users[userId] || user;
-      const msg = `👥 REFER & EARN (نظام الإحالات)\n\nشارك رابطك مع أصدقائك واكسب النجوم مجاناً!\n\nرابط الإحالة الخاص بك:\n${refLink}\n\nالإحالات الناجحة: ${refreshed.referral_count}\nالنجوم المكتسبة: ${refreshed.referral_count * 10} نجمة ⭐\n\n*(تكسب +10 نجوم عن كل صديق ينضم عبر رابطك)*`;
-      if (token) {
-        await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: keyboard });
-      }
-      return { text: msg, replyMarkup: keyboard };
+      return await this.handleReferEarnMenu(chatId, userId, token);
     }
 
-    // Button 9: 🎮 Games (or Arabic: 🎮 ألعاب)
+    // Button 9: 🎮 Gᴀᴍᴇs
     if (
-      clean === '🎮 Games' ||
       clean.includes('Games') ||
+      clean.includes('Gᴀᴍᴇs') ||
       cleanLower === '/games' ||
       clean.includes('ألعاب') ||
-      clean.includes('العاب') ||
-      clean.includes('لعبة')
+      clean.includes('العاب')
     ) {
-      const msg = `🎮 GAMES (الألعاب والجوائز)\n\nاختر لعبة وجرّب حظك لربح نجوم إضافية:\n\nاختر لعبة أدناه:`;
-      const markup = {
-        inline_keyboard: [
-          [{ text: '🎲 نرد الحظ (Lucky Dice)', callback_data: 'game_dice' }],
-          [{ text: '📦 الصندوق السحري (Mystery Box)', callback_data: 'game_box' }],
-          [{ text: '🎡 عجلة الحظ (Lucky Wheel)', callback_data: 'game_wheel' }]
-        ]
-      };
-      if (token) {
-        await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
-      }
-      return { text: msg, replyMarkup: markup };
+      return await this.handleGamesMenu(chatId, token);
     }
 
-    // Default /start or welcome (or Arabic /يبدأ أو بدء أو ابدأ)
-    const welcome = `👋 أهلاً بك في ETEBOX!\n\nمعرّفك الدائم: \`${userId}\`\n\nاستخدم أزرار القائمة بالأسفل لتصفح الفيديوهات، متابعة رصيدك من النجوم، وتحميل الملفات:`;
+    // Default /start or welcome
+    const welcome = `👋 Welcome to ETEBOX!\n\nYour Permanent ID: \`${userId}\`\n\nChoose an option from the menu below to browse exclusive videos, manage your Stars, and download files:`;
     if (token) {
       await this.apiCall(token, 'sendMessage', {
         chat_id: chatId,
@@ -793,6 +676,223 @@ export class TelegramBotService {
       });
     }
     return { text: welcome, replyMarkup: keyboard };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bot Menu Helper Methods (All in English with decorative Unicode text style)
+  // ---------------------------------------------------------------------------
+  public async handleBuyVideosMenu(chatId: string, userId: string, token: string): Promise<{ text: string; replyMarkup?: any }> {
+    const raw = db.getRaw();
+    const packages = (raw.video_packages || []).filter((p) => p.is_active);
+
+    if (packages.length === 0) {
+      const msg = `🎬 Bᴜʏ Vɪᴅᴇᴏs\n\nNo video packages are available at the moment. Please check back later!`;
+      const markup = {
+        inline_keyboard: [[{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]]
+      };
+      if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
+      return { text: msg, replyMarkup: markup };
+    }
+
+    const buttons: Array<Array<{ text: string; callback_data: string }>> = packages.map((pkg) => [
+      { text: `🎬 ${pkg.name} (${pkg.video_count} Videos) — ⭐ ${pkg.stars_price}`, callback_data: `vpkg_info_${pkg.id}` }
+    ]);
+    buttons.push([{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]);
+
+    const msg = `🎬 Bᴜʏ Vɪᴅᴇᴏs\n\nSelect a video package below to view details and unlock with Stars:`;
+    if (token) {
+      await this.apiCall(token, 'sendMessage', {
+        chat_id: chatId,
+        text: msg,
+        reply_markup: { inline_keyboard: buttons }
+      });
+    }
+    return { text: msg, replyMarkup: { inline_keyboard: buttons } };
+  }
+
+  public async handleFreeVideosMenu(chatId: string, token: string): Promise<{ text: string; replyMarkup?: any }> {
+    const videos = db.getRaw().free_videos.filter((v) => v.is_active);
+    if (videos.length === 0) {
+      const msg = '🆓 Fʀᴇᴇ 1 Vɪᴅᴇᴏs\n\nNo free videos are available right now. Please check back later!';
+      const markup = {
+        inline_keyboard: [[{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]]
+      };
+      if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
+      return { text: msg, replyMarkup: markup };
+    }
+
+    const inlineButtons: Array<Array<{ text: string; callback_data: string }>> = videos.map((v) => [
+      { text: `🎬 ${v.title || 'Free Video'}`, callback_data: `free_vid_${v.id}` }
+    ]);
+    inlineButtons.push([{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]);
+
+    const msg = `🆓 Fʀᴇᴇ 1 Vɪᴅᴇᴏs\n\nSelect a free video below to watch:`;
+    if (token) {
+      await this.apiCall(token, 'sendMessage', {
+        chat_id: chatId,
+        text: msg,
+        reply_markup: { inline_keyboard: inlineButtons }
+      });
+    }
+    return { text: msg, replyMarkup: { inline_keyboard: inlineButtons } };
+  }
+
+  public async handleMyBalanceMenu(chatId: string, userId: string, token: string): Promise<{ text: string; replyMarkup?: any }> {
+    const user = db.getRaw().users[userId] || { balance: 0, total_earned: 0, total_spent: 0, referral_count: 0 };
+    const msg = `💰 Yᴏᴜʀ Bᴀʟᴀɴᴄᴇ\n\n⭐ Stars Balance: ${user.balance}\n\n📈 Total Earned: ${user.total_earned} Stars\n📉 Total Spent: ${user.total_spent} Stars\n👥 Referrals: ${user.referral_count}`;
+    const inlineKeyboard = {
+      inline_keyboard: [
+        [{ text: '⭐ Bᴜʏ Sᴛᴀʀs', callback_data: 'menu_buy_stars' }, { text: '🔑 Rᴇᴅᴇᴇᴍ Cᴏᴅᴇ', callback_data: 'nav_redeem_prompt' }],
+        [{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]
+      ]
+    };
+    if (token) {
+      await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: inlineKeyboard });
+    }
+    return { text: msg, replyMarkup: inlineKeyboard };
+  }
+
+  public async handleBuyStarsMenu(chatId: string, token: string): Promise<{ text: string; replyMarkup?: any }> {
+    const packages = db.getRaw().star_packages.filter((p) => p.is_active);
+    const packageButtons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = packages.map((pkg) => [
+      { text: `${pkg.name} — $${pkg.price_usd}`, url: pkg.payment_url }
+    ]);
+    packageButtons.push([{ text: '🔑 Rᴇᴅᴇᴇᴍ Cᴏᴅᴇ', callback_data: 'nav_redeem_prompt' }]);
+    packageButtons.push([{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]);
+
+    const msg = `⭐ Bᴜʏ Sᴛᴀʀs\n\nSelect a Stars pack to top up your account balance:\n\n*(Note: Stars are internal app credits used to unlock premium content.)*`;
+    if (token) {
+      await this.apiCall(token, 'sendMessage', {
+        chat_id: chatId,
+        text: msg,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: packageButtons }
+      });
+    }
+    return { text: msg, replyMarkup: { inline_keyboard: packageButtons } };
+  }
+
+  public async handleChannelsMenu(chatId: string, userId: string, token: string): Promise<{ text: string; replyMarkup?: any }> {
+    const channels = db.getRaw().channels.filter((c) => c.is_active).sort((a, b) => a.display_order - b.display_order);
+    if (channels.length === 0) {
+      const msg = '📺 Oғғɪᴄɪᴀʟ Cʜᴀɴɴᴇʟs\n\nNo official channels are currently available.';
+      const markup = {
+        inline_keyboard: [[{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]]
+      };
+      if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
+      return { text: msg, replyMarkup: markup };
+    }
+
+    const refreshedUser = db.getRaw().users[userId] || { unlocked_channels: [] };
+    const unlockedSet = new Set(refreshedUser.unlocked_channels || []);
+
+    const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = channels.map((c) => {
+      const reqStars = typeof c.required_stars === 'number' ? c.required_stars : 0;
+      if (reqStars <= 0) {
+        return [{ text: `📢 ${c.name} (Fʀᴇᴇ)`, url: c.url }];
+      } else if (unlockedSet.has(c.id)) {
+        return [{ text: `🔓 ${c.name} (Uɴʟᴏᴄᴋᴇᴅ)`, url: c.url }];
+      } else {
+        return [{ text: `🔒 ${c.name} — ⭐ ${reqStars}`, callback_data: `chan_view_${c.id}` }];
+      }
+    });
+    buttons.push([{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]);
+
+    const msg = `📺 Oғғɪᴄɪᴀʟ Cʜᴀɴɴᴇʟs\n\nSelect a channel below to join or unlock with Stars:`;
+    if (token) {
+      await this.apiCall(token, 'sendMessage', {
+        chat_id: chatId,
+        text: msg,
+        reply_markup: { inline_keyboard: buttons }
+      });
+    }
+    return { text: msg, replyMarkup: { inline_keyboard: buttons } };
+  }
+
+  public async handleFilesMenu(chatId: string, token: string): Promise<{ text: string; replyMarkup?: any }> {
+    const files = db.getRaw().files.filter((f) => f.is_active);
+    if (files.length === 0) {
+      const msg = '📁 Pʀᴇᴍɪᴜᴍ Fɪʟᴇs\n\nNo premium files are currently available in the catalog.';
+      const markup = {
+        inline_keyboard: [[{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]]
+      };
+      if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
+      return { text: msg, replyMarkup: markup };
+    }
+
+    const buttons: Array<Array<{ text: string; callback_data: string }>> = files.map((f) => [
+      { text: `🎬 ${f.file_name} — ⭐ ${f.price_stars}`, callback_data: `file_detail_${f.id}` }
+    ]);
+    buttons.push([{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]);
+
+    const msg = `📁 Pʀᴇᴍɪᴜᴍ Fɪʟᴇs\n\nSelect a file below to preview sample or purchase with Stars:`;
+    if (token) {
+      await this.apiCall(token, 'sendMessage', {
+        chat_id: chatId,
+        text: msg,
+        reply_markup: { inline_keyboard: buttons }
+      });
+    }
+    return { text: msg, replyMarkup: { inline_keyboard: buttons } };
+  }
+
+  public async handleStoreMenu(chatId: string, token: string): Promise<{ text: string; replyMarkup?: any }> {
+    const storeUrl = db.getRaw().bot_settings.store_url || 'https://etebox.com/store';
+    const msg = `🛒 Eɴᴛᴇʀ Sᴛᴏʀᴇ\n\nClick the button below to open the official store:`;
+    const markup = {
+      inline_keyboard: [
+        [{ text: '🛒 Oᴘᴇɴ Sᴛᴏʀᴇ', url: storeUrl }],
+        [{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]
+      ]
+    };
+    if (token) {
+      await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
+    }
+    return { text: msg, replyMarkup: markup };
+  }
+
+  public async handleBackupBotMenu(chatId: string, token: string): Promise<{ text: string; replyMarkup?: any }> {
+    const backupUrl = db.getRaw().bot_settings.backup_bot_url || 'https://t.me/EteboxBackupBot';
+    const msg = `🔄 Bᴀᴄᴋᴜᴘ Bᴏᴛ\n\nIf the main bot is undergoing maintenance, you can use our official backup bot to access your points and purchases:`;
+    const markup = {
+      inline_keyboard: [
+        [{ text: '🔄 Oᴘᴇɴ Bᴀᴄᴋᴜᴘ Bᴏᴛ', url: backupUrl }],
+        [{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]
+      ]
+    };
+    if (token) {
+      await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
+    }
+    return { text: msg, replyMarkup: markup };
+  }
+
+  public async handleReferEarnMenu(chatId: string, userId: string, token: string): Promise<{ text: string; replyMarkup?: any }> {
+    const botUsername = db.getRaw().bot_settings.main_bot_username || 'YOUR_BOT';
+    const refLink = `https://t.me/${botUsername}?start=ref_${userId}`;
+    const refreshed = db.getRaw().users[userId] || { referral_count: 0 };
+    const msg = `👥 Rᴇғᴇʀ & Eᴀʀɴ\n\nShare your personal invite link with friends and earn Stars for free!\n\nYour Referral Link:\n${refLink}\n\nSuccessful Referrals: ${refreshed.referral_count}\nEarned Stars: ${refreshed.referral_count * 10} ⭐\n\n*(You receive +10 Stars for each friend who joins using your link!)*`;
+    const markup = {
+      inline_keyboard: [[{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]]
+    };
+    if (token) {
+      await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
+    }
+    return { text: msg, replyMarkup: markup };
+  }
+
+  public async handleGamesMenu(chatId: string, token: string): Promise<{ text: string; replyMarkup?: any }> {
+    const msg = `🎮 Gᴀᴍᴇs & Aᴄᴛɪᴠɪᴛʏ\n\nPlay mini-games to test your luck and earn bonus Stars:`;
+    const markup = {
+      inline_keyboard: [
+        [{ text: '🎲 Lᴜᴄᴋʏ Dɪᴄᴇ', callback_data: 'game_dice' }, { text: '📦 Mʏsᴛᴇʀʏ Bᴏx', callback_data: 'game_box' }],
+        [{ text: '🎡 Lᴜᴄᴋʏ Wʜᴇᴇʟ', callback_data: 'game_wheel' }],
+        [{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]
+      ]
+    };
+    if (token) {
+      await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
+    }
+    return { text: msg, replyMarkup: markup };
   }
 
   // Handle Telegram Callback Queries
@@ -862,7 +962,93 @@ export class TelegramBotService {
       }
     }
 
-    // 2. Free Video Delivery
+    // 2. Navigation & Main Menu Callbacks
+    if (data === 'nav_main_menu') {
+      const welcome = `👋 Welcome to ETEBOX!\n\nYour Permanent ID: \`${userId}\`\n\nChoose an option from the menu below to browse exclusive videos, manage your Stars, and download files:`;
+      const keyboard = this.getMainMenuKeyboard();
+      if (token) {
+        await this.apiCall(token, 'sendMessage', {
+          chat_id: chatId,
+          text: welcome,
+          parse_mode: 'Markdown',
+          reply_markup: keyboard
+        });
+      }
+      return { text: welcome, replyMarkup: keyboard };
+    }
+
+    if (data === 'menu_buy_videos') {
+      return await this.handleBuyVideosMenu(chatId, userId, token);
+    }
+
+    if (data.startsWith('vpkg_info_')) {
+      const pkgId = data.replace('vpkg_info_', '');
+      const pkg = (db.getRaw().video_packages || []).find((p) => p.id === pkgId && p.is_active);
+      if (!pkg) {
+        const msg = '❌ This video package is no longer available.';
+        if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg });
+        return { text: msg };
+      }
+
+      const refreshedUser = db.getRaw().users[userId] || { balance: 0 };
+      const msg = `🎬 ${pkg.name}\n\n📹 Number of Videos: ${pkg.video_count}\n⭐ Price: ${pkg.stars_price} Stars\n💰 Your Balance: ${refreshedUser.balance} Stars\n\nInstant direct delivery of all ${pkg.video_count} videos upon purchase!`;
+      const markup = {
+        inline_keyboard: [
+          [{ text: `⭐ Bᴜʏ Nᴏᴡ — ${pkg.stars_price} Stars`, callback_data: `vpkg_buy_${pkg.id}` }],
+          [{ text: '⬅️ Bᴀᴄᴋ ᴛᴏ Pᴀᴄᴋᴀɢᴇs', callback_data: 'menu_buy_videos' }, { text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]
+        ]
+      };
+      if (token) {
+        await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, reply_markup: markup });
+      }
+      return { text: msg, replyMarkup: markup };
+    }
+
+    if (data.startsWith('vpkg_buy_')) {
+      const pkgId = data.replace('vpkg_buy_', '');
+      const result = await this.executeVideoPackagePurchase(userId, pkgId);
+      if (token) {
+        const sent = await this.apiCall(token, 'sendMessage', {
+          chat_id: chatId,
+          text: result.message,
+          reply_markup: result.markup
+        });
+        if (result.success && sent.ok && sent.result?.message_id) {
+          await this.scheduleMessageDeletion(chatId, sent.result.message_id, 10 * 60 * 1000);
+        }
+      }
+      return { text: result.message, replyMarkup: result.markup };
+    }
+
+    if (data === 'menu_free_videos') {
+      return await this.handleFreeVideosMenu(chatId, token);
+    }
+
+    if (data === 'menu_my_balance') {
+      return await this.handleMyBalanceMenu(chatId, userId, token);
+    }
+
+    if (data === 'menu_buy_stars' || data === 'nav_buy_stars') {
+      return await this.handleBuyStarsMenu(chatId, token);
+    }
+
+    if (data === 'menu_channels') {
+      return await this.handleChannelsMenu(chatId, userId, token);
+    }
+
+    if (data === 'menu_files') {
+      return await this.handleFilesMenu(chatId, token);
+    }
+
+    if (data === 'menu_refer_earn') {
+      return await this.handleReferEarnMenu(chatId, userId, token);
+    }
+
+    if (data === 'menu_games') {
+      return await this.handleGamesMenu(chatId, token);
+    }
+
+    // 3. Free Video Delivery
     if (data.startsWith('free_vid_')) {
       const vidId = data.replace('free_vid_', '');
       const video = db.getRaw().free_videos.find((v) => v.id === vidId && v.is_active);
@@ -1069,9 +1255,12 @@ export class TelegramBotService {
     }
 
     if (data === 'nav_redeem_prompt') {
-      const msg = '🔑 REDEEM STARS CODE\n\nTo redeem a one-time code, send:\n`/redeem YOUR_CODE`';
-      if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, parse_mode: 'Markdown' });
-      return { text: msg };
+      const msg = '🔑 Rᴇᴅᴇᴇᴍ Sᴛᴀʀs Cᴏᴅᴇ\n\nTo redeem a Stars code, send:\n`/redeem YOUR_CODE`';
+      const markup = {
+        inline_keyboard: [[{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]]
+      };
+      if (token) await this.apiCall(token, 'sendMessage', { chat_id: chatId, text: msg, parse_mode: 'Markdown', reply_markup: markup });
+      return { text: msg, replyMarkup: markup };
     }
 
     return { text: 'Done' };
@@ -1128,12 +1317,96 @@ export class TelegramBotService {
         timestamp: new Date().toISOString()
       });
 
-      const successMsg = `✅ Purchase Successful!\n\n🎬 File: ${file.file_name}\n⭐ Paid: ${price} Stars\n\n📥 DOWNLOAD: ${file.download_url}\n🔑 File Code: ${file.file_code}\n🔐 ZIP Password: ${file.zip_password || 'None'}\n\n⚠️ Copy and save your File Code.\nThis message will be deleted after 10 minutes.`;
+      const successMsg = `✅ Pᴜʀᴄʜᴀsᴇ Sᴜᴄᴄᴇssғᴜʟ!\n\n🎬 File: ${file.file_name}\n⭐ Paid: ${price} Stars\n💰 Remaining Balance: ${user.balance} Stars\n\n📥 DOWNLOAD: ${file.download_url}\n🔑 File Code: ${file.file_code}\n🔐 ZIP Password: ${file.zip_password || 'None'}\n\n⚠️ Important Notice:\nPlease copy and save your File Code.\nThis message will be deleted after 10 minutes.`;
       const markup = {
-        inline_keyboard: [[{ text: '📥 DOWNLOAD NOW', url: file.download_url }]]
+        inline_keyboard: [
+          [{ text: '📥 Dᴏᴡɴʟᴏᴀᴅ Nᴏᴡ', url: file.download_url }],
+          [{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]
+        ]
       };
 
       return { success: true, message: successMsg, markup };
+    });
+  }
+
+  // Atomic Video Package purchase execution
+  public async executeVideoPackagePurchase(userId: string, packageId: string): Promise<{ success: boolean; message: string; markup?: any }> {
+    return await db.atomic((data) => {
+      if (!Array.isArray(data.video_packages)) data.video_packages = [];
+      if (!Array.isArray(data.video_package_purchases)) data.video_package_purchases = [];
+
+      const pkg = data.video_packages.find((p) => p.id === packageId && p.is_active);
+      if (!pkg) {
+        return { success: false, message: '❌ This video package is no longer available.' };
+      }
+
+      const user = data.users[userId];
+      if (!user) {
+        return { success: false, message: '❌ User record not found.' };
+      }
+
+      const price = pkg.stars_price;
+      if (user.balance < price) {
+        return {
+          success: false,
+          message: `❌ Insufficient Stars.\n\nPackage Price: ${price} Stars\nYour Balance: ${user.balance} Stars\n\nYou need ${price - user.balance} more Stars to purchase this package.`,
+          markup: {
+            inline_keyboard: [
+              [{ text: '⭐ Bᴜʏ Sᴛᴀʀs', callback_data: 'menu_buy_stars' }],
+              [{ text: '⬅️ Bᴀᴄᴋ ᴛᴏ Pᴀᴄᴋᴀɢᴇs', callback_data: 'menu_buy_videos' }, { text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]
+            ]
+          }
+        };
+      }
+
+      // Atomic deduction
+      const balanceBefore = user.balance;
+      user.balance -= price;
+      user.total_spent += price;
+
+      // Create purchase record
+      const purchaseId = crypto.randomUUID();
+      data.video_package_purchases.push({
+        id: purchaseId,
+        user_id: userId,
+        package_id: pkg.id,
+        package_name: pkg.name,
+        stars_paid: price,
+        video_urls: [...pkg.video_urls],
+        purchased_at: new Date().toISOString()
+      });
+
+      // Create transaction record
+      data.star_transactions.push({
+        id: crypto.randomUUID(),
+        user_id: userId,
+        amount: -price,
+        balance_before: balanceBefore,
+        balance_after: user.balance,
+        type: 'PURCHASE',
+        description: `Purchased Video Package: ${pkg.name}`,
+        timestamp: new Date().toISOString()
+      });
+
+      const linksFormatted = pkg.video_urls.map((url, idx) => `📹 Video ${idx + 1}: ${url}`).join('\n\n');
+
+      const successMsg = `✅ Pᴜʀᴄʜᴀsᴇ Sᴜᴄᴄᴇssғᴜʟ!\n\n🎬 ${pkg.name}\n⭐ Paid: ${price} Stars\n💰 Remaining Balance: ${user.balance} Stars\n\n📹 Your Unlocked Videos (${pkg.video_urls.length}):\n\n${linksFormatted}\n\n⚠️ Important Notice:\nPlease copy and save your links! For security and storage protection, this message will be automatically deleted after 10 minutes.`;
+
+      // Build inline URL buttons for direct tapping
+      const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
+      const validUrls = pkg.video_urls.filter((u) => u && (u.startsWith('http://') || u.startsWith('https://')));
+      for (let i = 0; i < validUrls.length; i += 2) {
+        const row: Array<{ text: string; url?: string; callback_data?: string }> = [
+          { text: `▶️ Vɪᴅᴇᴏ ${i + 1}`, url: validUrls[i] }
+        ];
+        if (i + 1 < validUrls.length) {
+          row.push({ text: `▶️ Vɪᴅᴇᴏ ${i + 2}`, url: validUrls[i + 1] });
+        }
+        buttons.push(row);
+      }
+      buttons.push([{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]);
+
+      return { success: true, message: successMsg, markup: { inline_keyboard: buttons } };
     });
   }
 
@@ -1170,7 +1443,7 @@ export class TelegramBotService {
           success: false,
           message: `❌ Insufficient Stars to enter this channel.\n\nYou need: ${price} Stars\nYour balance: ${user.balance} Stars`,
           markup: {
-            inline_keyboard: [[{ text: '⭐ Buy Stars', callback_data: 'nav_buy_stars' }]]
+            inline_keyboard: [[{ text: '⭐ Bᴜʏ Sᴛᴀʀs', callback_data: 'menu_buy_stars' }]]
           }
         };
       }
@@ -1193,9 +1466,12 @@ export class TelegramBotService {
         timestamp: new Date().toISOString()
       });
 
-      const successMsg = `🎉 Channel Unlocked Successfully!\n\n📢 ${channel.name}\n⭐ Paid: ${price} Stars\n💰 New Balance: ${user.balance} Stars\n\n👇 Click below to enter the channel:`;
+      const successMsg = `🎉 Cʜᴀɴɴᴇʟ Uɴʟᴏᴄᴋᴇᴅ Sᴜᴄᴄᴇssғᴜʟʟʏ!\n\n📢 ${channel.name}\n⭐ Paid: ${price} Stars\n💰 New Balance: ${user.balance} Stars\n\n👇 Click below to enter the channel:`;
       const markup = {
-        inline_keyboard: [[{ text: '🔗 Join Channel Now', url: channel.url }]]
+        inline_keyboard: [
+          [{ text: '🔗 Jᴏɪɴ Cʜᴀɴɴᴇʟ Nᴏᴡ', url: channel.url }],
+          [{ text: '🏠 Mᴀɪɴ Mᴇɴᴜ', callback_data: 'nav_main_menu' }]
+        ]
       };
 
       return { success: true, message: successMsg, markup };
@@ -1356,9 +1632,9 @@ export class TelegramBotService {
     const token = raw.bot_settings.main_bot_token;
     const users = Object.values(raw.users).filter((u) => !u.is_banned);
 
-    const text = `🆕 NEW FREE VIDEO AVAILABLE!\n\n🎬 ${video.title}\n🎁 A new free video has been added.\n\n👇 Get it now:`;
+    const text = `🆕 Nᴇᴡ Fʀᴇᴇ Vɪᴅᴇᴏ Aᴠᴀɪʟᴀʙʟᴇ!\n\n🎬 ${video.title}\n🎁 A new free video has been released.\n\n👇 Watch now:`;
     const markup = {
-      inline_keyboard: [[{ text: '🆓 GET FREE VIDEO', callback_data: `free_vid_${video.id}` }]]
+      inline_keyboard: [[{ text: '🆓 Gᴇᴛ Fʀᴇᴇ Vɪᴅᴇᴏ', callback_data: `free_vid_${video.id}` }]]
     };
 
     // Run asynchronously in background batch

@@ -172,3 +172,23 @@ export interface AdminAccountItem {
   status: 'active' | 'disabled';
   created_at: string;
 }
+
+export interface VideoPackage {
+  id: string;
+  name: string;
+  video_count: number;
+  stars_price: number;
+  video_urls: string[];
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface VideoPackagePurchase {
+  id: string;
+  user_id: string;
+  package_id: string;
+  package_name: string;
+  stars_paid: number;
+  video_urls: string[];
+  purchased_at: string;
+}

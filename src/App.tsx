@@ -15,6 +15,7 @@ import BroadcastView from './components/BroadcastView';
 import GamesView from './components/GamesView';
 import AdminLogsView from './components/AdminLogsView';
 import AdminAccountsView from './components/AdminAccountsView';
+import BuyVideosView from './components/BuyVideosView';
 import BotEmulatorModal from './components/BotEmulatorModal';
 
 const defaultAdmin: AdminUser = {
@@ -106,6 +107,8 @@ export default function App() {
           )}
 
           {currentTab === 'bot_settings' && <BotSettingsView />}
+
+          {currentTab === 'buy_videos' && <BuyVideosView />}
 
           {currentTab === 'users' && <UsersView />}
 
