@@ -1,22 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../api';
+import type { VideoPackage, VideoPackagePurchase } from '../types';
 import {
-  Film,
+  Video,
   Plus,
   Trash2,
-  Edit2,
+  Edit,
   CheckCircle2,
-  AlertCircle,
-  Video,
-  Star,
+  AlertTriangle,
   ExternalLink,
-  Power,
-  RefreshCw,
+  Film,
   ShoppingBag,
-  Clock,
-  Sparkles
+  Coins,
+  RefreshCw,
+  Eye,
+  X
 } from 'lucide-react';
-import type { VideoPackage, VideoPackagePurchase } from '../types';
 
 export default function BuyVideosView() {
   const [packages, setPackages] = useState<VideoPackage[]>([]);
@@ -24,50 +23,31 @@ export default function BuyVideosView() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'packages' | 'purchases'>('packages');
 
-  // Form State
-  const [isEditing, setIsEditing] = useState(false);
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [videoCount, setVideoCount] = useState<number>(5);
-  const [starsPrice, setStarsPrice] = useState<number>(40);
-  const [videoUrls, setVideoUrls] = useState<string[]>(['', '', '', '', '']);
-  const [isActive, setIsActive] = useState(true);
+  const [packageName, setPackageName] = useState('');
+  const [numberOfVideos, setNumberOfVideos] = useState(5);
+  const [starsPrice, setStarsPrice] = useState(40);
+  const [videoUrls, setVideoUrls] = useState<string[]>([]);
+  const [packageActive, setPackageActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Sync videoUrls array length when videoCount changes
-  const handleVideoCountChange = (newCount: number) => {
-    const validCount = Math.max(1, Math.min(50, newCount || 1));
-    setVideoCount(validCount);
-    setVideoUrls((prev) => {
-      const copy = [...prev];
-      if (copy.length < validCount) {
-        while (copy.length < validCount) copy.push('');
-      } else if (copy.length > validCount) {
-        copy.length = validCount;
-      }
-      return copy;
-    });
-  };
-
-  const handleUrlChange = (index: number, val: string) => {
-    setVideoUrls((prev) => {
-      const copy = [...prev];
-      copy[index] = val;
-      return copy;
-    });
-  };
+  // View purchase modal
+  const [selectedPurchase, setSelectedPurchase] = useState<VideoPackagePurchase | null>(null);
 
   const fetchData = async () => {
     try {
-      const [pkgRes, purRes] = await Promise.all([
-        apiRequest<{ packages: VideoPackage[] }>('/admin/video-packages'),
-        apiRequest<{ purchases: VideoPackagePurchase[] }>('/admin/video-package-purchases')
+      setLoading(true);
+      const [pkgs, purs] = await Promise.all([
+        apiRequest<VideoPackage[]>('/admin/video-packages'),
+        apiRequest<VideoPackagePurchase[]>('/admin/video-package-purchases')
       ]);
-      setPackages(pkgRes.packages || []);
-      setPurchases(purRes.purchases || []);
+      setPackages(pkgs);
+      setPurchases(purs);
     } catch (err: any) {
-      console.error('Error fetching video packages:', err);
+      setMessage({ type: 'error', text: err.message || 'Failed to fetch video packages' });
     } finally {
       setLoading(false);
     }
@@ -77,499 +57,555 @@ export default function BuyVideosView() {
     fetchData();
   }, []);
 
-  const resetForm = () => {
-    setIsEditing(false);
-    setEditingId(null);
-    setName('');
-    setVideoCount(5);
-    setStarsPrice(40);
-    setVideoUrls(['', '', '', '', '']);
-    setIsActive(true);
+  // Update dynamic video URLs array when numberOfVideos changes
+  const handleVideoCountChange = (count: number) => {
+    const clamped = Math.max(1, Math.min(20, count));
+    setNumberOfVideos(clamped);
+
+    setVideoUrls(prev => {
+      const next = [...prev];
+      if (clamped > next.length) {
+        while (next.length < clamped) {
+          next.push('');
+        }
+      } else {
+        next.splice(clamped);
+      }
+      return next;
+    });
   };
 
-  const handleEditClick = (pkg: VideoPackage) => {
-    setIsEditing(true);
-    setEditingId(pkg.id);
-    setName(pkg.name);
-    setVideoCount(pkg.video_count);
-    setStarsPrice(pkg.stars_price);
-    const urls = [...(pkg.video_urls || [])];
-    while (urls.length < pkg.video_count) urls.push('');
-    urls.length = pkg.video_count;
-    setVideoUrls(urls);
-    setIsActive(pkg.is_active);
+  const handleUrlChange = (index: number, val: string) => {
+    setVideoUrls(prev => {
+      const next = [...prev];
+      next[index] = val;
+      return next;
+    });
+  };
+
+  const openCreateModal = () => {
+    setEditingId(null);
+    setPackageName('');
+    setNumberOfVideos(5);
+    setStarsPrice(40);
+    setVideoUrls(['', '', '', '', '']);
+    setPackageActive(true);
+    setIsModalOpen(true);
     setMessage(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const openEditModal = (pkg: VideoPackage) => {
+    setEditingId(pkg.id);
+    setPackageName(pkg.package_name);
+    setNumberOfVideos(pkg.number_of_videos);
+    setStarsPrice(pkg.stars_price);
+    // Ensure array length matches number_of_videos
+    const urls = [...(pkg.video_urls || [])];
+    while (urls.length < pkg.number_of_videos) {
+      urls.push('');
+    }
+    setVideoUrls(urls);
+    setPackageActive(pkg.active);
+    setIsModalOpen(true);
+    setMessage(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setMessage({ type: 'error', text: 'Package Name is required' });
-      return;
-    }
-
-    const filteredUrls = videoUrls.map((u) => u.trim());
-    if (filteredUrls.some((u) => !u)) {
-      setMessage({ type: 'error', text: `Please fill in all ${videoCount} video URL fields` });
-      return;
-    }
-
     setSubmitting(true);
     setMessage(null);
 
     try {
-      if (isEditing && editingId) {
+      const payload = {
+        package_name: packageName.trim(),
+        number_of_videos: numberOfVideos,
+        stars_price: starsPrice,
+        video_urls: videoUrls.map(u => u.trim()).filter(Boolean),
+        active: packageActive
+      };
+
+      if (editingId) {
         await apiRequest(`/admin/video-packages/${editingId}`, {
           method: 'PUT',
-          body: JSON.stringify({
-            name: name.trim(),
-            video_count: videoCount,
-            stars_price: starsPrice,
-            video_urls: filteredUrls,
-            is_active: isActive
-          })
+          body: JSON.stringify(payload)
         });
         setMessage({ type: 'success', text: 'Video package updated successfully!' });
       } else {
         await apiRequest('/admin/video-packages', {
           method: 'POST',
-          body: JSON.stringify({
-            name: name.trim(),
-            video_count: videoCount,
-            stars_price: starsPrice,
-            video_urls: filteredUrls,
-            is_active: isActive
-          })
+          body: JSON.stringify(payload)
         });
         setMessage({ type: 'success', text: 'New video package created successfully!' });
       }
-      resetForm();
-      await fetchData();
+
+      setIsModalOpen(false);
+      fetchData();
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to save video package' });
+      setMessage({ type: 'error', text: err.message || 'Operation failed' });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleToggleActive = async (pkg: VideoPackage) => {
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete package "${name}"?`)) return;
+
     try {
-      await apiRequest(`/admin/video-packages/${pkg.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ is_active: !pkg.is_active })
-      });
-      await fetchData();
+      await apiRequest(`/admin/video-packages/${id}`, { method: 'DELETE' });
+      setMessage({ type: 'success', text: `Package "${name}" deleted` });
+      fetchData();
     } catch (err: any) {
-      alert(err.message || 'Failed to toggle package status');
+      setMessage({ type: 'error', text: err.message || 'Failed to delete package' });
     }
   };
 
-  const handleDelete = async (pkg: VideoPackage) => {
-    if (!confirm(`Are you sure you want to delete "${pkg.name}"? Existing purchases will remain safe.`)) return;
+  const toggleActive = async (pkg: VideoPackage) => {
     try {
-      await apiRequest(`/admin/video-packages/${pkg.id}`, { method: 'DELETE' });
-      await fetchData();
+      await apiRequest(`/admin/video-packages/${pkg.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ active: !pkg.active })
+      });
+      fetchData();
     } catch (err: any) {
-      alert(err.message || 'Failed to delete package');
+      setMessage({ type: 'error', text: err.message || 'Failed to toggle status' });
     }
   };
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 text-slate-400">
+      <div className="flex flex-col items-center justify-center min-h-[300px]">
         <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-sm">Loading Buy Videos catalog...</p>
+        <p className="text-xs text-slate-400">Loading video packages from Supabase...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
+    <div className="space-y-6">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              🎬
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">🎬 BUY VIDEOS Management</h1>
+            <span className="px-2 py-0.5 text-[10px] font-semibold bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded-full">
+              PostgreSQL
             </span>
-            <span>BUY VIDEOS Management</span>
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Create unlimited video packages with Stars pricing and dynamic video URLs delivered upon purchase.
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            Create unlimited video packages with dynamic video streaming URLs, prices, and monitor user purchases.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setActiveTab('packages')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
-              activeTab === 'packages'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
-                : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
-            }`}
+            onClick={fetchData}
+            className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl border border-slate-800 transition cursor-pointer"
+            title="Refresh"
           >
-            Video Packages ({packages.length})
+            <RefreshCw className="w-4 h-4" />
           </button>
+
           <button
-            onClick={() => setActiveTab('purchases')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
-              activeTab === 'purchases'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
-                : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
-            }`}
+            onClick={openCreateModal}
+            className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition cursor-pointer"
           >
-            Purchases ({purchases.length})
+            <Plus className="w-4 h-4" />
+            <span>New Video Package</span>
           </button>
         </div>
       </div>
 
       {message && (
         <div
-          className={`p-4 rounded-xl flex items-start gap-3 text-sm border ${
+          className={`p-4 rounded-2xl text-xs flex items-center gap-2.5 ${
             message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-              : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+              ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+              : 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
           }`}
         >
-          {message.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-400 mt-0.5" />
-          ) : (
-            <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-400 mt-0.5" />
-          )}
+          {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
           <span>{message.text}</span>
         </div>
       )}
 
+      {/* Sub-tabs: Packages vs Purchases */}
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+        <button
+          onClick={() => setActiveTab('packages')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+            activeTab === 'packages'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Film className="w-3.5 h-3.5" />
+          <span>Active Packages ({packages.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('purchases')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+            activeTab === 'purchases'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <ShoppingBag className="w-3.5 h-3.5" />
+          <span>Customer Purchases ({purchases.length})</span>
+        </button>
+      </div>
+
+      {/* TAB 1: PACKAGES LIST */}
       {activeTab === 'packages' && (
-        <>
-          {/* Add / Edit Package Form */}
-          <form
-            onSubmit={handleSubmit}
-            className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-5"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="font-semibold text-white text-base flex items-center gap-2">
-                <Video className="w-4 h-4 text-indigo-400" />
-                <span>{isEditing ? 'Edit Video Package' : 'Create New Video Package'}</span>
-              </h3>
-              {isEditing && (
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="text-xs text-slate-400 hover:text-slate-200 transition"
-                >
-                  Cancel Edit
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Package Name */}
-              <div className="sm:col-span-1 space-y-1.5">
-                <label className="text-xs font-medium text-slate-300">
-                  Package Name <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. 5 Videos Package"
-                  required
-                  className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-slate-700/80 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              {/* Number of Videos */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-300">
-                  Number of Videos <span className="text-rose-400">*</span>
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={videoCount}
-                    onChange={(e) => handleVideoCountChange(parseInt(e.target.value, 10))}
-                    required
-                    className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-slate-700/80 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                  <div className="flex gap-1">
-                    {[2, 5, 10].map((count) => (
-                      <button
-                        key={count}
-                        type="button"
-                        onClick={() => handleVideoCountChange(count)}
-                        className={`px-2 py-1.5 rounded-lg text-xs font-mono font-medium transition cursor-pointer ${
-                          videoCount === count
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                        }`}
-                      >
-                        {count}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Stars Price */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-300">
-                  Stars Price (⭐ Points) <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={starsPrice}
-                  onChange={(e) => setStarsPrice(parseInt(e.target.value, 10) || 1)}
-                  required
-                  className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-slate-700/80 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-            </div>
-
-            {/* Dynamic Video URL Fields (Exact matching number of videos) */}
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <Film className="w-3.5 h-3.5" />
-                  <span>Video URLs ({videoCount} required)</span>
-                </label>
-                <span className="text-[11px] text-slate-500">
-                  Exact links delivered to user immediately upon purchase
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
-                {videoUrls.map((url, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-400 flex items-center justify-between">
-                      <span>Video URL {idx + 1}</span>
-                      <span className="text-slate-600 font-mono">#{idx + 1}</span>
-                    </label>
-                    <input
-                      type="url"
-                      value={url}
-                      onChange={(e) => handleUrlChange(idx, e.target.value)}
-                      placeholder={`https://.../video-${idx + 1}`}
-                      required
-                      className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-100 text-xs font-mono focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Active Toggle & Submit */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 border-t border-slate-800/80">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  className="w-4 h-4 rounded text-indigo-600 focus:ring-0 bg-slate-950 border-slate-700"
-                />
-                <span className="text-xs font-medium text-slate-300">
-                  Enable package immediately in Telegram Bot
-                </span>
-              </label>
-
-              <div className="flex items-center gap-2">
-                {isEditing && (
-                  <button
-                    type="button"
-                    onClick={resetForm}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/25 transition cursor-pointer disabled:opacity-50"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>{isEditing ? 'Save Changes' : 'Create Video Package'}</span>
-                </button>
-              </div>
-            </div>
-          </form>
-
-          {/* Packages List */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="font-semibold text-white text-base flex items-center gap-2">
-                <span>Active Packages Catalog ({packages.length})</span>
-              </h3>
-              <span className="text-xs text-slate-400">
-                Shown to users under 🎬 Bᴜʏ Vɪᴅᴇᴏs
-              </span>
-            </div>
-
-            {packages.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 space-y-2">
-                <Video className="w-10 h-10 mx-auto text-slate-600" />
-                <p className="text-sm">No video packages created yet.</p>
-                <p className="text-xs text-slate-500">
-                  Use the form above to add your first package (e.g. 5 Videos Package for 40 Stars).
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {packages.map((pkg) => (
-                  <div
-                    key={pkg.id}
-                    className={`p-4 rounded-xl border transition ${
-                      pkg.is_active
-                        ? 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
-                        : 'bg-slate-950/30 border-slate-800/50 opacity-60'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-white text-sm">{pkg.name}</h4>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                              pkg.is_active
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                : 'bg-slate-800 text-slate-400 border border-slate-700'
-                            }`}
-                          >
-                            {pkg.is_active ? 'Active' : 'Disabled'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
-                          <span className="flex items-center gap-1 font-semibold text-amber-400">
-                            ⭐ {pkg.stars_price} Stars
-                          </span>
-                          <span>•</span>
-                          <span className="text-indigo-300 font-medium">
-                            {pkg.video_count} Videos
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleToggleActive(pkg)}
-                          className={`p-1.5 rounded-lg border transition ${
-                            pkg.is_active
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
-                              : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
-                          }`}
-                          title={pkg.is_active ? 'Disable Package' : 'Enable Package'}
-                        >
-                          <Power className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleEditClick(pkg)}
-                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition"
-                          title="Edit Package"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(pkg)}
-                          className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/20 transition"
-                          title="Delete Package"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* URLs preview */}
-                    <div className="mt-3 pt-3 border-t border-slate-800/80 space-y-1">
-                      <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
-                        Configured URLs ({pkg.video_urls?.length || 0}):
-                      </span>
-                      <div className="space-y-0.5">
-                        {(pkg.video_urls || []).slice(0, 3).map((url, i) => (
-                          <div key={i} className="text-[11px] font-mono text-slate-400 truncate flex items-center gap-1.5">
-                            <span className="text-slate-600">#{i + 1}</span>
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-indigo-400 hover:underline truncate"
-                            >
-                              {url}
-                            </a>
-                          </div>
-                        ))}
-                        {(pkg.video_urls?.length || 0) > 3 && (
-                          <span className="text-[10px] text-slate-500 italic block">
-                            + {pkg.video_urls.length - 3} more URLs
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {activeTab === 'purchases' && (
-        <div className="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <h3 className="font-semibold text-white text-base flex items-center gap-2">
-              <ShoppingBag className="w-4 h-4 text-emerald-400" />
-              <span>Video Packages Purchase History ({purchases.length})</span>
-            </h3>
-            <button
-              onClick={fetchData}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition"
-              title="Refresh"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {purchases.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 space-y-2">
-              <ShoppingBag className="w-10 h-10 mx-auto text-slate-600" />
-              <p className="text-sm">No video packages purchased yet.</p>
-              <p className="text-xs text-slate-500">
-                Purchases made through the Telegram bot will appear here in real-time.
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {packages.length === 0 ? (
+            <div className="col-span-full py-12 text-center bg-slate-900 border border-slate-800 rounded-2xl">
+              <Film className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+              <p className="text-sm font-semibold text-slate-300">No Video Packages Created Yet</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Click "New Video Package" above to create your first package.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 font-medium">
-                    <th className="py-2.5 px-3">User ID</th>
-                    <th className="py-2.5 px-3">Package Name</th>
-                    <th className="py-2.5 px-3">Stars Paid</th>
-                    <th className="py-2.5 px-3">Videos Delivered</th>
-                    <th className="py-2.5 px-3">Date</th>
+            packages.map(pkg => (
+              <div
+                key={pkg.id}
+                className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm hover:border-slate-700 transition flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-white tracking-tight">{pkg.package_name}</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {pkg.number_of_videos} Videos Included
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => toggleActive(pkg)}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border cursor-pointer ${
+                        pkg.active
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-slate-800 text-slate-500 border-slate-700'
+                      }`}
+                    >
+                      {pkg.active ? 'Active' : 'Inactive'}
+                    </button>
+                  </div>
+
+                  {/* Price */}
+                  <div className="flex items-center gap-1.5 p-3 rounded-xl bg-slate-950 border border-slate-800/80 mb-3">
+                    <Coins className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs text-slate-400 font-medium">Price:</span>
+                    <span className="text-sm font-bold text-amber-400 ml-auto">{pkg.stars_price} Stars ⭐</span>
+                  </div>
+
+                  {/* URLs preview */}
+                  <div className="space-y-1 mb-4">
+                    <span className="text-[11px] font-medium text-slate-400">
+                      Configured Video Links ({pkg.video_urls?.length || 0}):
+                    </span>
+                    <div className="space-y-1 max-h-24 overflow-y-auto scrollbar-none">
+                      {pkg.video_urls?.map((url, idx) => (
+                        <div
+                          key={idx}
+                          className="text-[11px] text-slate-400 bg-slate-950/60 p-1.5 rounded-lg border border-slate-800/50 truncate flex items-center justify-between"
+                        >
+                          <span className="truncate max-w-[200px]">{idx + 1}. {url}</span>
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-indigo-400 hover:text-indigo-300 ml-1"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-800/80">
+                  <span className="text-[10px] text-slate-500">
+                    Updated: {new Date(pkg.updated_at || pkg.created_at).toLocaleDateString()}
+                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => openEditModal(pkg)}
+                      className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                      title="Edit Package"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(pkg.id, pkg.package_name)}
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                      title="Delete Package"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: CUSTOMER PURCHASES */}
+      {activeTab === 'purchases' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-bold text-white">Video Package Purchases Ledger</h2>
+              <p className="text-xs text-slate-400">Audit trail of all video package sales in Supabase PostgreSQL</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400">
+                  <th className="pb-3 font-medium">Customer (TG ID)</th>
+                  <th className="pb-3 font-medium">Package</th>
+                  <th className="pb-3 font-medium text-center">Video Count</th>
+                  <th className="pb-3 font-medium text-right">Stars Paid</th>
+                  <th className="pb-3 font-medium text-right">Purchase Date</th>
+                  <th className="pb-3 font-medium text-center">Links</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {purchases.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-500">
+                      No video packages purchased yet
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
-                  {purchases.map((pur) => (
-                    <tr key={pur.id} className="hover:bg-slate-800/30">
-                      <td className="py-2.5 px-3 font-semibold text-indigo-300">{pur.user_id}</td>
-                      <td className="py-2.5 px-3 font-sans font-medium text-white">{pur.package_name}</td>
-                      <td className="py-2.5 px-3 text-amber-400 font-semibold">⭐ {pur.stars_paid}</td>
-                      <td className="py-2.5 px-3 text-slate-300">
-                        {pur.video_urls?.length || 0} links
+                ) : (
+                  purchases.map(pur => (
+                    <tr key={pur.id} className="hover:bg-slate-800/30 transition">
+                      <td className="py-3 font-mono font-semibold text-slate-300">
+                        {pur.user_id}
                       </td>
-                      <td className="py-2.5 px-3 text-slate-400 font-sans text-[11px]">
+                      <td className="py-3 font-semibold text-white">
+                        {pur.package_name}
+                      </td>
+                      <td className="py-3 text-center text-slate-400">
+                        {pur.video_count} Videos
+                      </td>
+                      <td className="py-3 text-right font-bold text-amber-400">
+                        {pur.price_paid} ⭐
+                      </td>
+                      <td className="py-3 text-right text-slate-400">
                         {new Date(pur.purchased_at).toLocaleString()}
                       </td>
+                      <td className="py-3 text-center">
+                        <button
+                          onClick={() => setSelectedPurchase(pur)}
+                          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-lg text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 mx-auto"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>View Links</span>
+                        </button>
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE / EDIT MODAL */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-violet-500/10 text-violet-400 flex items-center justify-center">
+                  <Video className="w-4 h-4" />
+                </div>
+                <h2 className="text-base font-bold text-white">
+                  {editingId ? 'Edit Video Package' : 'Create Video Package'}
+                </h2>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-          )}
+
+            {/* Modal Form */}
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Package Name (e.g., "5 Videos Package", "VIP 2 Videos Pack")
+                </label>
+                <input
+                  type="text"
+                  value={packageName}
+                  onChange={e => setPackageName(e.target.value)}
+                  placeholder="5 Videos Package"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 transition"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Number of Videos (1-20)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={numberOfVideos}
+                    onChange={e => handleVideoCountChange(parseInt(e.target.value, 10) || 1)}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 transition"
+                    required
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Generates exact URL inputs below</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Price in Stars ⭐
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10000"
+                    value={starsPrice}
+                    onChange={e => setStarsPrice(parseInt(e.target.value, 10) || 0)}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-amber-400 font-bold focus:outline-none focus:border-indigo-500 transition"
+                    required
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Deducted on Buy Now</p>
+                </div>
+              </div>
+
+              {/* DYNAMIC VIDEO URL FIELDS */}
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-white">
+                    Video Streaming / Download URLs ({numberOfVideos} required)
+                  </label>
+                  <span className="text-[10px] text-indigo-400">Dynamic fields</span>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {Array.from({ length: numberOfVideos }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="w-5 text-right text-[11px] font-mono text-slate-500">{i + 1}.</span>
+                      <input
+                        type="url"
+                        value={videoUrls[i] || ''}
+                        onChange={e => handleUrlChange(i, e.target.value)}
+                        placeholder={`https://commondatastorage.googleapis.com/.../video${i + 1}.mp4`}
+                        className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-mono transition"
+                        required
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={packageActive}
+                    onChange={e => setPackageActive(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 rounded bg-slate-950 border-slate-800"
+                  />
+                  <span>Active & available in Telegram Bot menu</span>
+                </label>
+              </div>
+
+              {/* Footer Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/25 transition cursor-pointer"
+                >
+                  {submitting ? 'Saving...' : editingId ? 'Save Changes' : 'Create Package'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW PURCHASE DETAILS MODAL */}
+      {selectedPurchase && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white">Purchase #{selectedPurchase.id.slice(0, 12)}</h3>
+              <button
+                onClick={() => setSelectedPurchase(null)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Package:</span>
+                <span className="font-semibold text-white">{selectedPurchase.package_name}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Buyer Telegram ID:</span>
+                <span className="font-mono text-indigo-300">{selectedPurchase.user_id}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Stars Paid:</span>
+                <span className="font-bold text-amber-400">{selectedPurchase.price_paid} Stars ⭐</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Date:</span>
+                <span className="text-slate-300">{new Date(selectedPurchase.purchased_at).toLocaleString()}</span>
+              </div>
+
+              <div className="pt-2">
+                <span className="text-slate-400 block mb-1 font-semibold">Delivered Video URLs:</span>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {selectedPurchase.video_urls?.map((url, i) => (
+                    <div key={i} className="p-2 rounded bg-slate-950 border border-slate-800 flex items-center justify-between text-[11px]">
+                      <span className="truncate max-w-[280px] text-slate-300 font-mono">{i + 1}. {url}</span>
+                      <a href={url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:text-indigo-300">
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSelectedPurchase(null)}
+              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
     </div>

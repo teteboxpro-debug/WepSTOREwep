@@ -24,6 +24,8 @@ export interface DashboardStats {
   lastWebhookError?: string;
   lastUpdateReceivedAt?: string;
   recentTransactions: StarTx[];
+  supabaseConnected?: boolean;
+  supabaseUrl?: string;
 }
 
 export interface BotSettingsData {
@@ -37,6 +39,8 @@ export interface BotSettingsData {
   storeUrl: string;
   backupBotUrl: string;
   autoNotifyFreeContent: boolean;
+  rewardStars?: number;
+  rewardHours?: number;
   webhookUrl?: string;
   webhookConfigured?: boolean;
   webhookReachable?: boolean;
@@ -44,6 +48,9 @@ export interface BotSettingsData {
   lastWebhookError?: string;
   lastUpdateReceivedAt?: string;
   lastUpdateId?: number;
+  supabaseConnected?: boolean;
+  supabaseUrl?: string;
+  supabaseStatus?: string;
 }
 
 export interface UserItem {
@@ -98,6 +105,8 @@ export interface FreeVideoItem {
   is_active: boolean;
   created_at: string;
 }
+
+export type FreeVideo = FreeVideoItem;
 
 export interface PaidFileItem {
   id: string;
@@ -175,12 +184,16 @@ export interface AdminAccountItem {
 
 export interface VideoPackage {
   id: string;
-  name: string;
-  video_count: number;
+  package_name: string;
+  name?: string;
+  number_of_videos: number;
+  video_count?: number;
   stars_price: number;
   video_urls: string[];
-  is_active: boolean;
+  active: boolean;
+  is_active?: boolean;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface VideoPackagePurchase {
@@ -188,7 +201,9 @@ export interface VideoPackagePurchase {
   user_id: string;
   package_id: string;
   package_name: string;
-  stars_paid: number;
+  price_paid?: number;
+  stars_paid?: number;
+  video_count?: number;
   video_urls: string[];
   purchased_at: string;
 }

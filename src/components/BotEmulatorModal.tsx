@@ -1,53 +1,36 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { apiRequest } from '../api';
 import {
   Smartphone,
   X,
   Send,
+  RotateCcw,
   Bot,
   User,
-  RotateCcw,
-  Sparkles,
+  Coins,
   ExternalLink,
-  ShieldCheck,
-  AlertCircle
+  Sparkles
 } from 'lucide-react';
+
+interface ChatMessage {
+  id: string;
+  sender: 'bot' | 'user';
+  text: string;
+  time: string;
+  keyboard?: {
+    inline_keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>>;
+  };
+}
 
 interface BotEmulatorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  botUsername?: string;
-  botFirstName?: string;
 }
 
-interface ChatMessage {
-  id: string;
-  sender: 'user' | 'bot';
-  text: string;
-  replyMarkup?: any;
-  timestamp: string;
-}
-
-export default function BotEmulatorModal({
-  isOpen,
-  onClose,
-  botUsername = 'EteboxBot',
-  botFirstName = 'ETEBOX Bot'
-}: BotEmulatorModalProps) {
-  const [testUserId, setTestUserId] = useState('88991122');
-  const [testFirstName, setTestFirstName] = useState('Test User');
-  const [inputText, setInputText] = useState('');
+export default function BotEmulatorModal({ isOpen, onClose }: BotEmulatorModalProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [activeReplyKeyboard, setActiveReplyKeyboard] = useState<string[][]>([
-    ['🎬 Bᴜʏ Vɪᴅᴇᴏs'],
-    ['🆓 Fʀᴇᴇ 1 Vɪᴅᴇᴏs', '💰 Mʏ Bᴀʟᴀɴᴄᴇ'],
-    ['⭐ Bᴜʏ Sᴛᴀʀs', '📺 Cʜᴀɴɴᴇʟs'],
-    ['📁 Fɪʟᴇs', '🛒 Eɴᴛᴇʀ Sᴛᴏʀᴇ'],
-    ['🔄 Bᴀᴄᴋᴜᴘ Bᴏᴛ', '👥 Rᴇғᴇʀ & Eᴀʀɴ'],
-    ['🎮 Gᴀᴍᴇs']
-  ]);
-
+  const [inputText, setInputText] = useState('');
+  const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -55,269 +38,242 @@ export default function BotEmulatorModal({
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Initial /start on modal open if messages empty
-  useEffect(() => {
     if (isOpen && messages.length === 0) {
-      handleSendMessage('/start');
+      handleSendText('/start');
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
   if (!isOpen) return null;
 
-  const handleSendMessage = async (textToSend: string) => {
-    const text = textToSend.trim();
+  const handleSendText = async (textToSend?: string) => {
+    const text = (textToSend || inputText).trim();
     if (!text) return;
 
     const userMsg: ChatMessage = {
-      id: 'msg_' + Date.now(),
+      id: `u_${Date.now()}`,
       sender: 'user',
       text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setMessages((prev) => [...prev, userMsg]);
-    setInputText('');
-    setLoading(true);
+    setMessages(prev => [...prev, userMsg]);
+    if (!textToSend) setInputText('');
+    setSending(true);
 
     try {
-      const res = await apiRequest('/bot-emulator/message', {
+      const res = await apiRequest<{ success: boolean; result: any; mainMenu: any }>('/admin/emulator/send', {
         method: 'POST',
-        body: JSON.stringify({
-          userId: testUserId,
-          text,
-          firstName: testFirstName,
-          username: testFirstName.toLowerCase().replace(/\s+/g, '')
-        })
+        body: JSON.stringify({ text, user_id: 99887766 })
       });
 
+      const replyText = res.result?.replyText || 'Command processed.';
       const botMsg: ChatMessage = {
-        id: 'bot_msg_' + Date.now(),
+        id: `b_${Date.now()}`,
         sender: 'bot',
-        text: res.text,
-        replyMarkup: res.replyMarkup,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        text: replyText,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        keyboard: res.mainMenu
       };
 
-      setMessages((prev) => [...prev, botMsg]);
-
-      // If reply markup contains persistent reply keyboard, update activeReplyKeyboard
-      if (res.replyMarkup?.keyboard) {
-        const rows = res.replyMarkup.keyboard.map((row: any[]) => row.map((btn) => btn.text));
-        setActiveReplyKeyboard(rows);
-      }
+      setMessages(prev => [...prev, botMsg]);
     } catch (err: any) {
-      setMessages((prev) => [
+      setMessages(prev => [
         ...prev,
         {
-          id: 'err_' + Date.now(),
+          id: `err_${Date.now()}`,
           sender: 'bot',
-          text: '❌ Something went wrong. Please try again.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          text: `⚠️ Error: ${err.message}`,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   };
 
-  const handleCallbackClick = async (data: string) => {
-    setLoading(true);
+  const handleCallbackClick = async (callbackData?: string, url?: string) => {
+    if (url) {
+      window.open(url, '_blank');
+      return;
+    }
+    if (!callbackData) return;
+
+    setSending(true);
     try {
-      const res = await apiRequest('/bot-emulator/callback', {
+      const res = await apiRequest<{ success: boolean; result: any; mainMenu: any }>('/admin/emulator/send', {
         method: 'POST',
-        body: JSON.stringify({
-          userId: testUserId,
-          data
-        })
+        body: JSON.stringify({ callback_data: callbackData, user_id: 99887766 })
       });
 
+      const replyText = res.result?.replyText || 'Action executed';
       const botMsg: ChatMessage = {
-        id: 'bot_cb_' + Date.now(),
+        id: `b_${Date.now()}`,
         sender: 'bot',
-        text: res.text,
-        replyMarkup: res.replyMarkup,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        text: replyText,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
-      setMessages((prev) => [...prev, botMsg]);
-    } catch (err) {
-      console.error(err);
+      setMessages(prev => [...prev, botMsg]);
+    } catch (err: any) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `err_${Date.now()}`,
+          sender: 'bot',
+          text: `⚠️ Callback Error: ${err.message}`,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   };
 
-  const handleResetChat = () => {
+  const handleReset = () => {
     setMessages([]);
-    handleSendMessage('/start');
+    handleSendText('/start');
   };
 
+  // Main menu keyboard buttons
+  const mainKeyboard = [
+    [{ text: '🎬 Bᴜʏ Vɪᴅᴇᴏs', callback_data: 'menu_buy_videos' }],
+    [
+      { text: '🆓 Fʀᴇᴇ Vɪᴅᴇᴏs', callback_data: 'menu_free_videos' },
+      { text: '💰 Mʏ Bᴀʟᴀɴᴄᴇ', callback_data: 'menu_my_balance' }
+    ],
+    [
+      { text: '⭐ Bᴜʏ Sᴛᴀʀs', callback_data: 'menu_buy_stars' },
+      { text: '📺 Cʜᴀɴɴᴇʟs', callback_data: 'menu_channels' }
+    ],
+    [
+      { text: '📁 Fɪʟᴇs', callback_data: 'menu_files' },
+      { text: '🏪 Eɴᴛᴇʀ Sᴛᴏʀᴇ', url: 'https://etebox.com/store' }
+    ],
+    [
+      { text: '🤖 Bᴀᴄᴋᴜᴘ Bᴏᴛ', url: 'https://t.me/EteboxBackupBot' },
+      { text: '👥 Rᴇғᴇʀʀᴀʟ', callback_data: 'menu_refer_earn' }
+    ],
+    [{ text: '🎮 Gᴀᴍᴇs', callback_data: 'menu_games' }]
+  ];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md h-[95vh] sm:h-[820px] flex flex-col shadow-2xl overflow-hidden relative">
-        {/* Phone Frame Header */}
-        <div className="bg-slate-950 p-4 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-indigo-600/30">
-              <Bot className="w-5 h-5" />
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4">
+      {/* Mobile Device Frame */}
+      <div className="bg-slate-900 border-4 border-slate-800 rounded-[36px] max-w-sm w-full h-[680px] flex flex-col shadow-2xl overflow-hidden relative">
+        {/* Phone Notch & Header */}
+        <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white text-xs font-bold shadow-md">
+              E
             </div>
             <div>
-              <div className="font-bold text-white text-sm flex items-center gap-1.5">
-                <span>{botFirstName}</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              </div>
-              <div className="text-[11px] text-slate-400">@{botUsername} • bot</div>
+              <p className="text-xs font-bold text-white leading-tight">ETEBOX Bot</p>
+              <p className="text-[10px] text-emerald-400 font-medium leading-none">bot emulator</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
-              onClick={handleResetChat}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
-              title="Reset conversation"
+              onClick={handleReset}
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              title="Restart /start"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
-              title="Close emulator"
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              title="Close Emulator"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Test User Switcher bar */}
-        <div className="bg-slate-900/90 px-3 py-1.5 border-b border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-          <div className="flex items-center gap-1">
-            <span>Simulating User ID:</span>
-            <input
-              type="text"
-              value={testUserId}
-              onChange={(e) => setTestUserId(e.target.value)}
-              className="w-24 px-1.5 py-0.5 bg-slate-950 border border-slate-800 rounded text-indigo-300 font-mono"
-            />
-          </div>
-          <span className="text-emerald-400 font-medium">Real Backend Connected</span>
-        </div>
-
-        {/* Chat Messages Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-950/70">
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
-            >
-              <div
-                className={`max-w-[85%] rounded-2xl p-3 text-xs sm:text-sm whitespace-pre-wrap ${
-                  m.sender === 'user'
-                    ? 'bg-indigo-600 text-white rounded-br-none shadow-md shadow-indigo-600/20'
-                    : 'bg-slate-800 text-slate-100 rounded-bl-none border border-slate-700/60'
-                }`}
-              >
-                {m.text}
-
-                {/* Inline Keyboard Buttons */}
-                {m.replyMarkup?.inline_keyboard && (
-                  <div className="mt-2.5 pt-2 border-t border-slate-700/60 space-y-1.5">
-                    {m.replyMarkup.inline_keyboard.map((row: any[], rIdx: number) => (
-                      <div key={rIdx} className="flex flex-wrap gap-1.5">
-                        {row.map((btn, bIdx) => (
-                          btn.url ? (
-                            <a
-                              key={bIdx}
-                              href={btn.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex-1 text-center py-1.5 px-2 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition"
-                            >
-                              <span>{btn.text}</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          ) : (
-                            <button
-                              key={bIdx}
-                              onClick={() => handleCallbackClick(btn.callback_data)}
-                              className="flex-1 text-center py-1.5 px-2 bg-slate-700 hover:bg-slate-600 active:scale-95 text-white rounded-lg text-xs font-medium transition cursor-pointer"
-                            >
-                              {btn.text}
-                            </button>
-                          )
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
+        {/* Chat History Body */}
+        <div className="flex-1 p-3 overflow-y-auto space-y-3 bg-slate-950/70 text-xs">
+          {messages.map(m => {
+            const isBot = m.sender === 'bot';
+            return (
+              <div key={m.id} className={`flex flex-col ${isBot ? 'items-start' : 'items-end'}`}>
+                <div
+                  className={`max-w-[85%] rounded-2xl p-3 leading-relaxed shadow-sm ${
+                    isBot
+                      ? 'bg-slate-900 text-slate-100 border border-slate-800 rounded-tl-sm'
+                      : 'bg-indigo-600 text-white rounded-tr-sm'
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                  <span className="block text-[9px] text-right mt-1 opacity-50">{m.time}</span>
+                </div>
               </div>
-              <span className="text-[10px] text-slate-500 mt-1 px-1">{m.timestamp}</span>
-            </div>
-          ))}
-
-          {loading && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 italic p-1">
-              <span className="w-2 h-2 rounded-full bg-slate-500 animate-pulse" />
-              <span>Bot is typing...</span>
+            );
+          })}
+          {sending && (
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 px-2">
+              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+              <span>ETEBOX Bot is typing...</span>
             </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Telegram Reply Keyboard Area (The 9 Main Buttons in Exact Order) */}
+        {/* PERSISTENT TELEGRAM INLINE KEYBOARD (EXACT REQUIRED LAYOUT) */}
         <div className="bg-slate-900 border-t border-slate-800 p-2.5 space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold px-1 flex items-center justify-between">
-            <span>Main Menu Keyboard</span>
-            <span className="text-[10px] text-indigo-400">Official Order</span>
+          <div className="text-[10px] font-semibold text-slate-400 text-center tracking-wider uppercase mb-1">
+            Telegram Inline Menu
           </div>
 
-          <div className="space-y-1">
-            {activeReplyKeyboard.map((row, rIdx) => (
-              <div key={rIdx} className="grid grid-cols-2 gap-1.5">
-                {row.map((btnText, bIdx) => (
-                  <button
-                    key={bIdx}
-                    onClick={() => handleSendMessage(btnText)}
-                    className={`py-2 px-2 text-xs font-medium rounded-xl border transition active:scale-95 cursor-pointer truncate ${
-                      row.length === 1 ? 'col-span-2' : ''
-                    } ${
-                      btnText.includes('FREE 1 VIDEOS')
-                        ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20'
-                        : btnText.includes('Buy Stars')
-                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
-                        : 'bg-slate-800/90 border-slate-700 text-slate-200 hover:bg-slate-700'
-                    }`}
-                  >
-                    {btnText}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
+          {mainKeyboard.map((row, rIdx) => (
+            <div
+              key={rIdx}
+              className={`grid gap-1.5 ${row.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}
+            >
+              {row.map((btn, bIdx) => (
+                <button
+                  key={bIdx}
+                  onClick={() => handleCallbackClick(btn.callback_data, btn.url)}
+                  disabled={sending}
+                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition cursor-pointer text-center truncate shadow-sm ${
+                    btn.text.includes('Bᴜʏ Vɪᴅᴇᴏs')
+                      ? 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-indigo-600/20'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60'
+                  }`}
+                >
+                  {btn.text}
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
 
-        {/* Text Input Row */}
-        <div className="bg-slate-950 p-3 border-t border-slate-800 flex items-center gap-2">
+        {/* Input Bar */}
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            handleSendText();
+          }}
+          className="bg-slate-950 p-2 border-t border-slate-800 flex items-center gap-2"
+        >
           <input
             type="text"
             value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSendMessage(inputText);
-            }}
-            placeholder="Type a message or /redeem CODE..."
-            className="flex-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            onChange={e => setInputText(e.target.value)}
+            placeholder="Type message or /redeem CODE..."
+            className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
           />
           <button
-            onClick={() => handleSendMessage(inputText)}
-            disabled={!inputText.trim()}
-            className="p-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl transition"
+            type="submit"
+            disabled={sending || !inputText.trim()}
+            className="p-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl cursor-pointer"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-3.5 h-3.5" />
           </button>
-        </div>
+        </form>
       </div>
     </div>
   );

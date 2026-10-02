@@ -1,41 +1,42 @@
-import { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../api';
+import type { DashboardStats, StarTx } from '../types';
 import {
   Users,
-  Activity,
-  Star,
+  Coins,
   Gift,
-  Share2,
   ShoppingBag,
-  Film,
-  FileBox,
-  Tv,
+  Share2,
+  Video,
   Bot,
+  Database,
+  CheckCircle2,
   AlertTriangle,
   ArrowUpRight,
   ArrowDownLeft,
-  Smartphone,
   RefreshCw,
-  Clock
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
-import type { DashboardStats } from '../types';
 
 interface DashboardViewProps {
-  onNavigate: (tab: string) => void;
+  onNavigateTab: (tab: string) => void;
   onOpenEmulator: () => void;
 }
 
-export default function DashboardView({ onNavigate, onOpenEmulator }: DashboardViewProps) {
+export default function DashboardView({ onNavigateTab, onOpenEmulator }: DashboardViewProps) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchStats = async () => {
     try {
+      setError(null);
       const data = await apiRequest<DashboardStats>('/admin/stats');
       setStats(data);
-    } catch (err) {
-      console.error('Error fetching dashboard stats:', err);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load dashboard metrics');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -44,337 +45,363 @@ export default function DashboardView({ onNavigate, onOpenEmulator }: DashboardV
 
   useEffect(() => {
     fetchStats();
-    const interval = setInterval(fetchStats, 10000); // refresh every 10s
-    return () => clearInterval(interval);
   }, []);
 
-  const handleManualRefresh = () => {
+  const handleRefresh = () => {
     setRefreshing(true);
     fetchStats();
   };
 
-  if (loading && !stats) {
+  if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 text-slate-400">
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
         <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-sm">Loading system dashboard...</p>
+        <p className="text-xs text-slate-400">Loading system metrics from Supabase PostgreSQL...</p>
       </div>
     );
   }
 
-  const statCards = [
-    {
-      title: 'Total Users',
-      value: stats?.totalUsers || 0,
-      icon: Users,
-      color: 'text-blue-400',
-      bg: 'bg-blue-500/10 border-blue-500/20',
-      action: () => onNavigate('users')
-    },
-    {
-      title: 'Active Users (7d)',
-      value: stats?.activeUsers || 0,
-      icon: Activity,
-      color: 'text-emerald-400',
-      bg: 'bg-emerald-500/10 border-emerald-500/20',
-      action: () => onNavigate('users')
-    },
-    {
-      title: 'Stars in Circulation',
-      value: `⭐ ${stats?.totalStarsCirculation || 0}`,
-      icon: Star,
-      color: 'text-amber-400',
-      bg: 'bg-amber-500/10 border-amber-500/20',
-      action: () => onNavigate('packages')
-    },
-    {
-      title: 'Auto Rewards Given',
-      value: stats?.autoRewardsGiven || 0,
-      icon: Gift,
-      color: 'text-pink-400',
-      bg: 'bg-pink-500/10 border-pink-500/20',
-      action: () => onNavigate('logs')
-    },
-    {
-      title: 'Qualified Referrals',
-      value: stats?.totalReferrals || 0,
-      icon: Share2,
-      color: 'text-purple-400',
-      bg: 'bg-purple-500/10 border-purple-500/20',
-      action: () => onNavigate('users')
-    },
-    {
-      title: 'Total File Purchases',
-      value: stats?.totalPurchases || 0,
-      icon: ShoppingBag,
-      color: 'text-indigo-400',
-      bg: 'bg-indigo-500/10 border-indigo-500/20',
-      action: () => onNavigate('files')
-    },
-    {
-      title: 'Active Free Videos',
-      value: stats?.totalFreeVideos || 0,
-      icon: Film,
-      color: 'text-cyan-400',
-      bg: 'bg-cyan-500/10 border-cyan-500/20',
-      action: () => onNavigate('free_videos')
-    },
-    {
-      title: 'Active Paid Files',
-      value: stats?.totalFiles || 0,
-      icon: FileBox,
-      color: 'text-orange-400',
-      bg: 'bg-orange-500/10 border-orange-500/20',
-      action: () => onNavigate('files')
-    },
-    {
-      title: 'Channels Configured',
-      value: stats?.totalChannels || 0,
-      icon: Tv,
-      color: 'text-teal-400',
-      bg: 'bg-teal-500/10 border-teal-500/20',
-      action: () => onNavigate('channels')
-    }
-  ];
-
   return (
     <div className="space-y-6">
-      {/* Header & Quick Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Overview Dashboard</h2>
-          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Central monitoring for Etebox Telegram Bot, persistent database & user activity
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">System Dashboard</h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Real-time status of Telegram Bot, Stars currency, and Supabase PostgreSQL persistence.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-medium border border-slate-800 transition cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+          <button
+            onClick={() => onNavigateTab('buy_videos')}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition cursor-pointer"
+          >
+            <Video className="w-3.5 h-3.5" />
+            <span>Manage Video Packages</span>
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={handleRefresh} className="underline font-semibold ml-2">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Supabase Architecture Status Banner */}
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/20 shadow-xl relative overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-semibold text-white">Supabase PostgreSQL Permanent Architecture</h3>
+                <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Single Source of Truth
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                Persistent storage configured. All users, stars balances, video package purchases, and referral data map permanently to Telegram User IDs in PostgreSQL (Project: <code className="text-indigo-300">vwgsxbraktgmlibmgils</code>).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onNavigateTab('bot_settings')}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium border border-slate-700 transition cursor-pointer"
+            >
+              Supabase Config
+            </button>
+            <button
+              onClick={onOpenEmulator}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/20 transition cursor-pointer flex items-center gap-1.5"
+            >
+              <span>Test Bot Flow</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4">
+        {/* Total Users */}
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl relative overflow-hidden">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium">Total Users</span>
+            <Users className="w-4 h-4 text-indigo-400" />
+          </div>
+          <p className="text-2xl font-bold text-white tracking-tight">{stats?.totalUsers ?? 0}</p>
+          <p className="text-[11px] text-slate-400 mt-1">
+            <span className="text-emerald-400 font-semibold">{stats?.activeUsers ?? 0}</span> active (7d)
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleManualRefresh}
-            disabled={refreshing}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition"
-            title="Refresh statistics"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={onOpenEmulator}
-            className="flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs sm:text-sm font-medium shadow-md shadow-indigo-600/20 transition cursor-pointer"
-          >
-            <Smartphone className="w-4 h-4" />
-            <span>Launch Bot Simulator</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Bot Status Banner */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-900/90 border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-3.5">
-          <div className="w-12 h-12 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center flex-shrink-0 text-indigo-400">
-            <Bot className="w-6 h-6" />
+        {/* Stars Circulation */}
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl relative overflow-hidden">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium">Stars in Wallets</span>
+            <Coins className="w-4 h-4 text-amber-400" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-white text-base">Main Telegram Bot Status:</span>
-              {stats?.botStatus === 'online' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  🟢 Bot Online {stats.botUsername ? `(@${stats.botUsername})` : ''}
-                </span>
-              )}
-              {stats?.botStatus === 'offline' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-500/20 text-slate-400 border border-slate-500/30">
-                  🔴 Bot Offline
-                </span>
-              )}
-              {stats?.botStatus === 'token_invalid' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  ⚠️ Token Invalid
-                </span>
-              )}
-              {stats?.botStatus === 'telegram_error' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                  ⚠️ Telegram API Error
-                </span>
-              )}
-            </div>
-
-            {/* Diagnostic Badges distinguishing Bot Token vs Webhook vs Reachability */}
-            <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px]">
-              <span className={`px-2 py-0.5 rounded-lg border font-medium ${
-                stats?.botTokenValid
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-              }`}>
-                Token: {stats?.botTokenValid ? '✅ Valid' : '❌ Not Set'}
-              </span>
-
-              <span className={`px-2 py-0.5 rounded-lg border font-medium ${
-                stats?.webhookConfigured
-                  ? 'bg-teal-500/10 border-teal-500/30 text-teal-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-400'
-              }`}>
-                Webhook: {stats?.webhookConfigured ? '⚡ Configured' : '⏸️ Not Set'}
-              </span>
-
-              <span className={`px-2 py-0.5 rounded-lg border font-medium ${
-                stats?.webhookReachable
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                  : stats?.lastWebhookError
-                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-400'
-              }`}>
-                Reachable: {stats?.webhookReachable ? '🟢 200 OK' : (stats?.lastWebhookError ? '🔴 Error' : 'Unknown')}
-              </span>
-
-              {stats?.lastUpdateReceivedAt && (
-                <span className="px-2 py-0.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-300">
-                  Last Update: {new Date(stats.lastUpdateReceivedAt).toLocaleTimeString()}
-                </span>
-              )}
-            </div>
-
-            {stats?.lastWebhookError && (
-              <div className="mt-2 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-lg">
-                <strong>Webhook Error:</strong> {stats.lastWebhookError}
-              </div>
-            )}
-          </div>
+          <p className="text-2xl font-bold text-amber-400 tracking-tight">{stats?.totalStarsCirculation ?? 0} ⭐</p>
+          <p className="text-[11px] text-slate-400 mt-1">Internal currency</p>
         </div>
 
-        <button
-          onClick={() => onNavigate('bot_settings')}
-          className="self-start md:self-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium shadow-md shadow-indigo-600/20 transition cursor-pointer"
-        >
-          Manage Webhook & Bot →
-        </button>
-      </div>
+        {/* Auto Rewards */}
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl relative overflow-hidden">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium">Auto Rewards</span>
+            <Gift className="w-4 h-4 text-purple-400" />
+          </div>
+          <p className="text-2xl font-bold text-white tracking-tight">{stats?.autoRewardsGiven ?? 0}</p>
+          <p className="text-[11px] text-slate-400 mt-1">+3 Stars / 8 hours</p>
+        </div>
 
-      {/* 9 Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3 sm:gap-4">
-        {statCards.map((card, idx) => {
-          const Icon = card.icon;
-          return (
+        {/* Total Purchases */}
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl relative overflow-hidden">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium">Total Purchases</span>
+            <ShoppingBag className="w-4 h-4 text-emerald-400" />
+          </div>
+          <p className="text-2xl font-bold text-white tracking-tight">{stats?.totalPurchases ?? 0}</p>
+          <p className="text-[11px] text-slate-400 mt-1">Videos & files</p>
+        </div>
+
+        {/* Total Referrals */}
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl relative overflow-hidden">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium">Referrals</span>
+            <Share2 className="w-4 h-4 text-sky-400" />
+          </div>
+          <p className="text-2xl font-bold text-white tracking-tight">{stats?.totalReferrals ?? 0}</p>
+          <p className="text-[11px] text-slate-400 mt-1">+5 Stars per user</p>
+        </div>
+
+        {/* Bot Status Card */}
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl relative overflow-hidden">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium">Telegram Bot</span>
+            <Bot className="w-4 h-4 text-indigo-400" />
+          </div>
+          <div className="flex items-center gap-1.5 mt-1">
             <div
-              key={idx}
-              onClick={card.action}
-              className={`p-4 rounded-2xl bg-slate-900/80 border ${card.bg} hover:border-indigo-500/50 cursor-pointer transition flex flex-col justify-between`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-slate-400">{card.title}</span>
-                <Icon className={`w-4 h-4 ${card.color}`} />
-              </div>
-              <div className="text-xl sm:text-2xl font-bold text-white tracking-tight">{card.value}</div>
-            </div>
-          );
-        })}
+              className={`w-2.5 h-2.5 rounded-full ${
+                stats?.botStatus === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
+              }`}
+            />
+            <span className="text-sm font-bold text-white capitalize">{stats?.botStatus || 'Offline'}</span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1 truncate">
+            {stats?.botUsername ? `@${stats.botUsername}` : 'Token not set'}
+          </p>
+        </div>
       </div>
 
-      {/* Recent Transactions & Quick Links */}
+      {/* Two Column Layout: Quick Actions & Recent Transactions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Transactions */}
-        <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5">
+        {/* Left Column: Quick Features & Store Links */}
+        <div className="space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <h2 className="text-sm font-bold text-white mb-3">Core Application Modules</h2>
+            <div className="space-y-2">
+              <button
+                onClick={() => onNavigateTab('buy_videos')}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-violet-950/20 hover:bg-violet-900/30 border border-violet-500/20 text-left transition cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-violet-500/10 text-violet-400 flex items-center justify-center">
+                    <Video className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-white">🎬 BUY VIDEOS</p>
+                    <p className="text-[11px] text-slate-400">Manage multi-link video packages & pricing</p>
+                  </div>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-slate-400" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('users')}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-950/40 hover:bg-slate-800/60 border border-slate-800 text-left transition cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-white">Users & Balances</p>
+                    <p className="text-[11px] text-slate-400">View users, adjust stars, manage restrictions</p>
+                  </div>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-slate-400" />
+              </button>
+
+              <button
+                onClick={() => onNavigateTab('stars_codes')}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-950/40 hover:bg-slate-800/60 border border-slate-800 text-left transition cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                    <Coins className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-white">Redeemable Star Codes</p>
+                    <p className="text-[11px] text-slate-400">Generate promotional codes & packages</p>
+                  </div>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+          </div>
+
+          {/* Bot Inline Menu Preview Card */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-white">Bot Inline Keyboard Layout</h2>
+              <button
+                onClick={onOpenEmulator}
+                className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold"
+              >
+                Test in Emulator →
+              </button>
+            </div>
+            <div className="space-y-1.5 p-3 bg-slate-950 border border-slate-800 rounded-xl font-mono text-[11px]">
+              <div className="p-2 rounded bg-slate-900 border border-slate-800 text-center text-violet-300 font-semibold">
+                🎬 Bᴜʏ Vɪᴅᴇᴏs
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="p-2 rounded bg-slate-900 border border-slate-800 text-center text-slate-300">
+                  🆓 Fʀᴇᴇ Vɪᴅᴇᴏs
+                </div>
+                <div className="p-2 rounded bg-slate-900 border border-slate-800 text-center text-slate-300">
+                  💰 Mʏ Bᴀʟᴀɴᴄᴇ
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="p-2 rounded bg-slate-900 border border-slate-800 text-center text-slate-300">
+                  ⭐ Bᴜʏ Sᴛᴀʀs
+                </div>
+                <div className="p-2 rounded bg-slate-900 border border-slate-800 text-center text-slate-300">
+                  📺 Cʜᴀɴɴᴇʟs
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="p-2 rounded bg-slate-900 border border-slate-800 text-center text-slate-300">
+                  📁 Fɪʟᴇs
+                </div>
+                <div className="p-2 rounded bg-slate-900 border border-slate-800 text-center text-slate-300">
+                  🏪 Eɴᴛᴇʀ Sᴛᴏʀᴇ
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="p-2 rounded bg-slate-900 border border-slate-800 text-center text-slate-300">
+                  🤖 Bᴀᴄᴋᴜᴘ Bᴏᴛ
+                </div>
+                <div className="p-2 rounded bg-slate-900 border border-slate-800 text-center text-slate-300">
+                  👥 Rᴇғᴇʀʀᴀʟ
+                </div>
+              </div>
+              <div className="p-2 rounded bg-slate-900 border border-slate-800 text-center text-slate-300">
+                🎮 Gᴀᴍᴇs
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Recent Transactions Table */}
+        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-white text-base flex items-center gap-2">
-              <Star className="w-4 h-4 text-amber-400" />
-              <span>Recent Star Transactions</span>
-            </h3>
+            <div>
+              <h2 className="text-sm font-bold text-white">Recent Star Transactions</h2>
+              <p className="text-xs text-slate-400">Atomic ledger records from Supabase PostgreSQL</p>
+            </div>
             <button
-              onClick={() => onNavigate('users')}
-              className="text-xs text-indigo-400 hover:text-indigo-300"
+              onClick={() => onNavigateTab('stars_codes')}
+              className="text-xs font-semibold text-indigo-400 hover:text-indigo-300"
             >
-              View Users →
+              View All →
             </button>
           </div>
 
-          {stats?.recentTransactions && stats.recentTransactions.length > 0 ? (
-            <div className="space-y-2 overflow-x-auto">
-              {stats.recentTransactions.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-xs"
-                >
-                  <div className="flex items-center gap-2.5">
-                    {tx.amount > 0 ? (
-                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center flex-shrink-0">
-                        <ArrowDownLeft className="w-3.5 h-3.5" />
-                      </div>
-                    ) : (
-                      <div className="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center flex-shrink-0">
-                        <ArrowUpRight className="w-3.5 h-3.5" />
-                      </div>
-                    )}
-                    <div>
-                      <div className="font-medium text-slate-200">
-                        User <span className="font-mono text-indigo-300">{tx.user_id}</span>
-                      </div>
-                      <div className="text-[11px] text-slate-500 truncate max-w-[200px] sm:max-w-xs">
-                        {tx.description}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right flex-shrink-0">
-                    <span
-                      className={`font-mono font-semibold ${
-                        tx.amount > 0 ? 'text-emerald-400' : 'text-rose-400'
-                      }`}
-                    >
-                      {tx.amount > 0 ? `+${tx.amount}` : tx.amount} ⭐
-                    </span>
-                    <div className="text-[10px] text-slate-500 flex items-center justify-end gap-1">
-                      <Clock className="w-2.5 h-2.5" />
-                      <span>{new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-xs text-slate-500">
-              No recent Star transactions recorded yet.
-            </div>
-          )}
-        </div>
-
-        {/* Quick Management Shortcuts */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
-          <div>
-            <h3 className="font-semibold text-white text-base mb-3">Quick Navigation</h3>
-            <div className="space-y-2">
-              <button
-                onClick={() => onNavigate('free_videos')}
-                className="w-full text-left p-3 rounded-xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-xs font-medium text-slate-200 transition flex items-center justify-between"
-              >
-                <span>Add Free 1 Video</span>
-                <span className="text-slate-500">→</span>
-              </button>
-              <button
-                onClick={() => onNavigate('files')}
-                className="w-full text-left p-3 rounded-xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-xs font-medium text-slate-200 transition flex items-center justify-between"
-              >
-                <span>Add Premium Paid File</span>
-                <span className="text-slate-500">→</span>
-              </button>
-              <button
-                onClick={() => onNavigate('packages')}
-                className="w-full text-left p-3 rounded-xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-xs font-medium text-slate-200 transition flex items-center justify-between"
-              >
-                <span>Generate One-Time Code</span>
-                <span className="text-slate-500">→</span>
-              </button>
-              <button
-                onClick={() => onNavigate('broadcast')}
-                className="w-full text-left p-3 rounded-xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-xs font-medium text-slate-200 transition flex items-center justify-between"
-              >
-                <span>Send Broadcast Announcement</span>
-                <span className="text-slate-500">→</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-4 border-t border-slate-800/80 text-[11px] text-slate-500">
-            Persistent database independent from Bot Token. Changing Bot Token keeps all users, balances, and records intact.
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400">
+                  <th className="pb-3 font-medium">User</th>
+                  <th className="pb-3 font-medium">Type</th>
+                  <th className="pb-3 font-medium">Description</th>
+                  <th className="pb-3 font-medium text-right">Amount</th>
+                  <th className="pb-3 font-medium text-right">Balance</th>
+                  <th className="pb-3 font-medium text-right">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {!stats?.recentTransactions || stats.recentTransactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-500">
+                      No transactions recorded yet
+                    </td>
+                  </tr>
+                ) : (
+                  stats.recentTransactions.map((tx: StarTx) => {
+                    const isCredit = tx.amount > 0;
+                    return (
+                      <tr key={tx.id} className="hover:bg-slate-800/30 transition">
+                        <td className="py-3 font-mono text-slate-300 font-semibold">
+                          {tx.user_id.length > 12 ? `${tx.user_id.slice(0, 10)}...` : tx.user_id}
+                        </td>
+                        <td className="py-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              tx.type === 'reward'
+                                ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                                : tx.type === 'video_purchase'
+                                ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20'
+                                : tx.type === 'referral'
+                                ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                                : tx.type === 'file_purchase'
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-slate-800 text-slate-300'
+                            }`}
+                          >
+                            {tx.type}
+                          </span>
+                        </td>
+                        <td className="py-3 text-slate-300 max-w-[200px] truncate" title={tx.description}>
+                          {tx.description}
+                        </td>
+                        <td className="py-3 text-right font-semibold">
+                          <span className={isCredit ? 'text-emerald-400' : 'text-rose-400'}>
+                            {isCredit ? `+${tx.amount}` : tx.amount} ⭐
+                          </span>
+                        </td>
+                        <td className="py-3 text-right text-slate-400 font-mono">
+                          {tx.balance_after} ⭐
+                        </td>
+                        <td className="py-3 text-right text-slate-500">
+                          {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
