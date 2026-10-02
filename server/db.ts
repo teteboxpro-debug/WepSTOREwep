@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { getSupabase, verifySupabaseConnection, SUPABASE_CONFIG, getSupabaseStatus } from './supabase';
 
 // Types matching database schema
@@ -412,14 +414,17 @@ class DatabaseService {
   }
 
   /**
-   * Initializes database connection and pulls existing data from Supabase PostgreSQL
+   * Initializes database connection, checks for legacy JSON database, and syncs with Supabase
    */
   public async init(): Promise<void> {
     if (this.isLoaded) return;
 
+    // 1. Safely migrate existing JSON database if found on disk
+    await this.migrateFromJsonIfAvailable();
+
     const supabase = getSupabase();
     if (!supabase) {
-      console.warn('[DB] Supabase client not available yet. Running in memory synchronization mode.');
+      console.warn('[DB] Supabase client not configured in environment yet. Operating in-memory with preserved data.');
       this.isLoaded = true;
       return;
     }
@@ -427,11 +432,231 @@ class DatabaseService {
     try {
       await verifySupabaseConnection();
       await this.pullFromSupabase();
+      // Ensure all migrated data is persisted to Supabase
+      await this.syncToSupabase();
       this.isLoaded = true;
-      console.log('[DB] Successfully loaded state from Supabase PostgreSQL database.');
+      console.log('[DB] Successfully synchronized state with Supabase PostgreSQL database.');
     } catch (err: any) {
-      console.error('[DB] Failed to load data from Supabase:', err.message);
+      console.error('[DB] Failed to synchronize data with Supabase:', err.message);
       this.isLoaded = true;
+    }
+  }
+
+  /**
+   * Reads existing data from data/etebox_database.json (if present)
+   * and migrates it idempotently into memory and Supabase.
+   */
+  private async migrateFromJsonIfAvailable(): Promise<void> {
+    const jsonPaths = [
+      path.resolve(process.cwd(), 'data', 'etebox_database.json'),
+      path.resolve('/tmp', 'etebox_data', 'etebox_database.json')
+    ];
+
+    let sourceFile: string | null = null;
+    for (const p of jsonPaths) {
+      if (fs.existsSync(p)) {
+        sourceFile = p;
+        break;
+      }
+    }
+
+    if (!sourceFile) {
+      return;
+    }
+
+    try {
+      console.log(`[DB Migration] Found existing JSON database at: ${sourceFile}. Starting safe migration...`);
+      const fileContent = fs.readFileSync(sourceFile, 'utf8');
+      const json = JSON.parse(fileContent);
+
+      // 1. Users
+      if (json.users) {
+        const userList = Array.isArray(json.users) ? json.users : Object.values(json.users);
+        for (const u of userList as any[]) {
+          const userIdStr = String(u.id || u.telegram_user_id);
+          const existing = this.data.users.find(x => x.id === userIdStr || String(x.telegram_user_id) === userIdStr);
+          if (!existing) {
+            this.data.users.push({
+              id: userIdStr,
+              telegram_user_id: !isNaN(Number(userIdStr)) ? Number(userIdStr) : 0,
+              username: u.username || undefined,
+              first_name: u.first_name || undefined,
+              balance: Number(u.balance) || 0,
+              total_earned: Number(u.total_earned) || Number(u.balance) || 0,
+              total_spent: Number(u.total_spent) || 0,
+              registered_at: u.registered_at || new Date().toISOString(),
+              last_activity_at: u.last_activity_at || u.last_activity || new Date().toISOString(),
+              last_reward_at: u.last_auto_reward_at || u.last_reward_at || undefined,
+              verification_status: u.verification_status || 'verified',
+              failed_verification_attempts: Number(u.failed_verification_attempts) || 0,
+              referral_count: Number(u.referral_count) || 0,
+              referred_by: u.referred_by ? String(u.referred_by) : undefined,
+              is_banned: Boolean(u.is_banned || u.ban_status),
+              banned_reason: u.banned_reason || undefined,
+              unlocked_channels: Array.isArray(u.unlocked_channels) ? u.unlocked_channels : []
+            });
+          }
+        }
+      }
+
+      // 2. Admins
+      if (json.admins) {
+        const adminList = Array.isArray(json.admins) ? json.admins : Object.values(json.admins);
+        for (const a of adminList as any[]) {
+          if (!this.data.admins.some(x => x.username.toLowerCase() === a.username.toLowerCase())) {
+            this.data.admins.push({
+              id: a.id || `admin_${Date.now()}`,
+              username: a.username,
+              password_hash: a.password_hash,
+              permissions: Array.isArray(a.permissions) ? a.permissions : ['all'],
+              status: a.status || 'active',
+              created_at: a.created_at || new Date().toISOString()
+            });
+          }
+        }
+      }
+
+      // 3. Bot Settings
+      if (json.bot_settings) {
+        const bs = json.bot_settings;
+        this.data.bot_settings = {
+          bot_token: bs.bot_token || bs.main_bot_token || this.data.bot_settings.bot_token,
+          store_url: bs.store_url || this.data.bot_settings.store_url,
+          backup_bot_url: bs.backup_bot_url || this.data.bot_settings.backup_bot_url,
+          auto_notify_free_content: bs.auto_notify_free_content ?? this.data.bot_settings.auto_notify_free_content,
+          reward_stars: bs.reward_stars ?? this.data.bot_settings.reward_stars,
+          reward_hours: bs.reward_hours ?? this.data.bot_settings.reward_hours,
+          webhook_url: bs.webhook_url,
+          webhook_secret: bs.webhook_secret,
+          updated_at: new Date().toISOString()
+        };
+      }
+
+      // 4. Star Transactions
+      if (Array.isArray(json.star_transactions)) {
+        for (const tx of json.star_transactions) {
+          if (!this.data.star_transactions.some(x => x.id === tx.id)) {
+            this.data.star_transactions.push({
+              id: tx.id,
+              user_id: String(tx.user_id),
+              amount: Number(tx.amount),
+              balance_before: Number(tx.balance_before),
+              balance_after: Number(tx.balance_after),
+              type: tx.type,
+              description: tx.description,
+              reference_id: tx.reference_id,
+              timestamp: tx.timestamp || tx.created_at || new Date().toISOString()
+            });
+          }
+        }
+      }
+
+      // 5. Star Packages
+      if (Array.isArray(json.star_packages)) {
+        for (const pkg of json.star_packages) {
+          if (!this.data.star_packages.some(x => x.id === pkg.id)) {
+            this.data.star_packages.push(pkg);
+          }
+        }
+      }
+
+      // 6. Star Codes
+      if (json.star_codes) {
+        const codeList = Array.isArray(json.star_codes) ? json.star_codes : Object.values(json.star_codes);
+        for (const c of codeList as any[]) {
+          if (!this.data.star_codes.some(x => x.code === c.code)) {
+            this.data.star_codes.push({
+              id: c.id || `code_${c.code}`,
+              code: c.code,
+              stars_amount: Number(c.stars_amount),
+              is_active: Boolean(c.is_active),
+              is_used: Boolean(c.is_used),
+              used_by_user_id: c.used_by_user_id ? String(c.used_by_user_id) : undefined,
+              used_by_username: c.used_by_username,
+              used_at: c.used_at,
+              created_at: c.created_at || new Date().toISOString()
+            });
+          }
+        }
+      }
+
+      // 7. Free Videos
+      if (Array.isArray(json.free_videos)) {
+        for (const fv of json.free_videos) {
+          if (!this.data.free_videos.some(x => x.id === fv.id)) {
+            this.data.free_videos.push(fv);
+          }
+        }
+      }
+
+      // 8. Files & File Purchases
+      if (Array.isArray(json.files)) {
+        for (const f of json.files) {
+          if (!this.data.files.some(x => x.id === f.id)) {
+            this.data.files.push(f);
+          }
+        }
+      }
+      if (Array.isArray(json.file_purchases)) {
+        for (const fp of json.file_purchases) {
+          if (!this.data.file_purchases.some(x => x.id === fp.id)) {
+            this.data.file_purchases.push({ ...fp, user_id: String(fp.user_id) });
+          }
+        }
+      }
+
+      // 9. Channels
+      if (Array.isArray(json.channels)) {
+        for (const ch of json.channels) {
+          if (!this.data.channels.some(x => x.id === ch.id)) {
+            this.data.channels.push(ch);
+          }
+        }
+      }
+
+      // 10. Referrals
+      if (Array.isArray(json.referrals)) {
+        for (const r of json.referrals) {
+          if (!this.data.referrals.some(x => x.id === r.id)) {
+            this.data.referrals.push({
+              id: r.id,
+              referrer_user_id: String(r.referrer_user_id),
+              referred_user_id: String(r.referred_user_id),
+              reward_amount: Number(r.stars_rewarded || r.reward_amount || 5),
+              created_at: r.created_at || new Date().toISOString()
+            });
+          }
+        }
+      }
+
+      // 11. Video packages & purchases if present in json
+      if (Array.isArray(json.video_packages)) {
+        for (const vp of json.video_packages) {
+          if (!this.data.video_packages.some(x => x.id === vp.id)) {
+            this.data.video_packages.push(vp);
+          }
+        }
+      }
+      if (Array.isArray(json.video_package_purchases)) {
+        for (const vpp of json.video_package_purchases) {
+          if (!this.data.video_package_purchases.some(x => x.id === vpp.id)) {
+            this.data.video_package_purchases.push({ ...vpp, user_id: String(vpp.user_id) });
+          }
+        }
+      }
+
+      // 12. Admin logs
+      if (Array.isArray(json.admin_logs)) {
+        for (const l of json.admin_logs) {
+          if (!this.data.admin_logs.some(x => x.id === l.id)) {
+            this.data.admin_logs.push(l);
+          }
+        }
+      }
+
+      console.log(`[DB Migration] Safely ingested JSON database: ${this.data.users.length} users, ${this.data.star_transactions.length} transactions.`);
+    } catch (err: any) {
+      console.error('[DB Migration] Error migrating data from JSON:', err.message);
     }
   }
 
