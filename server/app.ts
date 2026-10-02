@@ -45,10 +45,8 @@ app.post('/api/admin/login', async (req: Request, res: Response) => {
     a => a.username.toLowerCase() === (username || '').toLowerCase() && a.status === 'active'
   );
 
-  // Default master credentials check: username 'Abood', password '321325'
-  const isMatch = admin
-    ? admin.password_hash === password
-    : username === 'Abood' && password === '321325';
+  const masterPassword = process.env.ADMIN_PASSWORD || '321325';
+  const isMatch = password === masterPassword || (admin && admin.password_hash === password);
 
   if (!isMatch) {
     return res.status(401).json({ error: 'Invalid username or password' });
