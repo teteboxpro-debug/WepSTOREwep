@@ -64,35 +64,44 @@ async function logAction(adminUsername: string, action: string, target?: string,
 // =============================================================================
 
 const handleAdminLogin = async (req: Request, res: Response) => {
-  const { username, password } = req.body;
-  const raw = db.getRaw();
-  const admin = raw.admins.find(
-    a => a.username.toLowerCase() === (username || '').toLowerCase() && a.status === 'active'
-  );
+  try {
+    const { username = '', password = '' } = req.body || {};
+    const raw = db.getRaw();
+    const admins = Array.isArray(raw?.admins) ? raw.admins : [];
+    const cleanUser = String(username).trim();
+    const cleanPass = String(password).trim();
 
-  const masterPassword = process.env.ADMIN_PASSWORD || '321325';
-  const isMatch = password === masterPassword || (admin && admin.password_hash === password);
+    const admin = admins.find(
+      a => a.username.toLowerCase() === cleanUser.toLowerCase() && a.status === 'active'
+    );
 
-  if (!isMatch) {
-    return res.status(401).json({ error: 'Invalid username or password' });
+    const masterPassword = process.env.ADMIN_PASSWORD || '321325';
+    const isMatch = cleanPass === masterPassword || (admin && admin.password_hash === cleanPass);
+
+    if (!isMatch || !cleanPass) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    const token = `etebox_admin_token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const adminUser = admin || {
+      id: 'admin_1',
+      username: cleanUser || 'Abood',
+      permissions: ['all']
+    };
+
+    logAction(adminUser.username, 'ADMIN_LOGIN', undefined, 'Signed in to Admin Panel').catch(() => {});
+    return res.json({ token, admin: adminUser });
+  } catch (err: any) {
+    console.error('[Admin Login Error]:', err.message);
+    return res.status(500).json({ error: `Login error: ${err.message || 'Internal server error'}` });
   }
-
-  const token = `etebox_admin_token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  const adminUser = admin || {
-    id: 'admin_1',
-    username: 'Abood',
-    permissions: ['all']
-  };
-
-  await logAction(adminUser.username, 'ADMIN_LOGIN', undefined, 'Signed in to Admin Panel');
-  return res.json({ token, admin: adminUser });
 };
 
 app.post('/api/admin/login', handleAdminLogin);
 app.post('/api/auth/login', handleAdminLogin);
 
 const handleAdminLogout = async (_req: Request, res: Response) => {
-  await logAction('Abood', 'ADMIN_LOGOUT', undefined, 'Signed out from Admin Panel');
+  logAction('Abood', 'ADMIN_LOGOUT', undefined, 'Signed out from Admin Panel').catch(() => {});
   return res.json({ success: true, message: 'Logged out successfully' });
 };
 
@@ -101,7 +110,7 @@ app.post('/api/auth/logout', handleAdminLogout);
 
 const handleAdminSession = async (_req: Request, res: Response) => {
   const raw = db.getRaw();
-  const admin = raw.admins[0] || {
+  const admin = (raw?.admins && raw.admins[0]) || {
     id: 'admin_1',
     username: 'Abood',
     permissions: ['all']
@@ -127,39 +136,61 @@ app.get('/api/auth/session', requireAdmin, handleAdminSession);
 // =============================================================================
 
 app.get('/api/admin/stats', requireAdmin, async (_req: Request, res: Response) => {
-  const raw = db.getRaw();
-  const botStatus = await telegramBot.getBotStatus();
-  const supaStatus = getSupabaseStatus();
+  try {
+    const raw = db.getRaw();
+    let botStatus: { online: boolean; configured: boolean; error?: string; botInfo?: any } = {
+      online: false,
+      configured: false,
+      error: 'Not checked'
+    };
+    try {
+      botStatus = await telegramBot.getBotStatus();
+    } catch (e: any) {
+      console.warn('Bot status check notice:', e.message);
+    }
+    const supaStatus = getSupabaseStatus();
 
-  const totalUsers = raw.users.length;
-  const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const activeUsers = raw.users.filter(u => new Date(u.last_activity_at).getTime() >= oneWeekAgo).length;
-  const totalStarsCirculation = raw.users.reduce((acc, u) => acc + (u.balance || 0), 0);
-  const autoRewardsGiven = raw.star_transactions.filter(t => t.type === 'reward').length;
-  const totalReferrals = raw.referrals.length;
-  const totalPurchases = (raw.file_purchases?.length || 0) + (raw.video_package_purchases?.length || 0);
+    const users = Array.isArray(raw?.users) ? raw.users : [];
+    const transactions = Array.isArray(raw?.star_transactions) ? raw.star_transactions : [];
+    const referrals = Array.isArray(raw?.referrals) ? raw.referrals : [];
 
-  res.json({
-    totalUsers,
-    activeUsers,
-    totalStarsCirculation,
-    autoRewardsGiven,
-    totalReferrals,
-    totalPurchases,
-    totalFreeVideos: raw.free_videos.length,
-    totalFiles: raw.files.length,
-    totalChannels: raw.channels.length,
-    botStatus: botStatus.online ? 'online' : botStatus.configured ? 'token_invalid' : 'offline',
-    botUsername: botStatus.botInfo?.username,
-    botFirstName: botStatus.botInfo?.first_name,
-    botError: botStatus.error,
-    recentTransactions: raw.star_transactions.slice(0, 10),
-    supabaseConnected: supaStatus.verified,
-    supabaseStatus: supaStatus.displayStatus,
-    supabaseDetails: supaStatus.message,
-    supabaseUrl: supaStatus.url,
-    supabaseProjectId: supaStatus.projectId
-  });
+    const totalUsers = users.length;
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const activeUsers = users.filter(u => {
+      if (!u.last_activity_at) return false;
+      const t = new Date(u.last_activity_at).getTime();
+      return !isNaN(t) && t >= oneWeekAgo;
+    }).length;
+    const totalStarsCirculation = users.reduce((acc, u) => acc + (Number(u.balance) || 0), 0);
+    const autoRewardsGiven = transactions.filter(t => t.type === 'reward').length;
+    const totalReferrals = referrals.length;
+    const totalPurchases = (raw?.file_purchases?.length || 0) + (raw?.video_package_purchases?.length || 0);
+
+    return res.json({
+      totalUsers,
+      activeUsers,
+      totalStarsCirculation,
+      autoRewardsGiven,
+      totalReferrals,
+      totalPurchases,
+      totalFreeVideos: raw?.free_videos?.length || 0,
+      totalFiles: raw?.files?.length || 0,
+      totalChannels: raw?.channels?.length || 0,
+      botStatus: botStatus.online ? 'online' : botStatus.configured ? 'token_invalid' : 'offline',
+      botUsername: botStatus.botInfo?.username,
+      botFirstName: botStatus.botInfo?.first_name,
+      botError: botStatus.error,
+      recentTransactions: transactions.slice(0, 10),
+      supabaseConnected: supaStatus.verified,
+      supabaseStatus: supaStatus.displayStatus,
+      supabaseDetails: supaStatus.message,
+      supabaseUrl: supaStatus.url,
+      supabaseProjectId: supaStatus.projectId
+    });
+  } catch (err: any) {
+    console.error('[Stats Error]:', err);
+    return res.status(500).json({ error: `Stats error: ${err.message || 'Failed to load stats'}` });
+  }
 });
 
 // Real server-side Supabase Connection Test & Health Check

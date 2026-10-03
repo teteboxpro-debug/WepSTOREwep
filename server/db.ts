@@ -2,6 +2,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getSupabase, verifySupabaseConnection, SUPABASE_CONFIG, getSupabaseStatus } from './supabase';
 
+export function toSafeTelegramUserId(val: any): number {
+  if (typeof val === 'number' && !isNaN(val) && isFinite(val) && val > 0) {
+    return Math.floor(val);
+  }
+  const str = String(val || '').trim();
+  const parsed = parseInt(str, 10);
+  if (!isNaN(parsed) && isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  // Deterministic positive 8-digit integer for mock IDs like "user_channel_test"
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return 70000000 + (Math.abs(hash) % 20000000);
+}
+
 // Types matching database schema
 export interface User {
   id: string; // string representation of telegram_user_id
@@ -477,11 +495,12 @@ class DatabaseService {
         const userList = Array.isArray(json.users) ? json.users : Object.values(json.users);
         for (const u of userList as any[]) {
           const userIdStr = String(u.id || u.telegram_user_id);
-          const existing = this.data.users.find(x => x.id === userIdStr || String(x.telegram_user_id) === userIdStr);
+          const safeId = toSafeTelegramUserId(userIdStr);
+          const existing = this.data.users.find(x => x.id === userIdStr || x.telegram_user_id === safeId);
           if (!existing) {
             this.data.users.push({
               id: userIdStr,
-              telegram_user_id: !isNaN(Number(userIdStr)) ? Number(userIdStr) : 0,
+              telegram_user_id: safeId,
               username: u.username || undefined,
               first_name: u.first_name || undefined,
               balance: Number(u.balance) || 0,
@@ -834,22 +853,22 @@ class DatabaseService {
       // 2. Sync Users (upsert all users in cache)
       if (this.data.users.length > 0) {
         const userRows = this.data.users.map(u => ({
-          telegram_user_id: Number(u.telegram_user_id || u.id),
+          telegram_user_id: toSafeTelegramUserId(u.telegram_user_id || u.id),
           username: u.username || null,
           first_name: u.first_name || null,
-          balance: u.balance,
-          total_earned: u.total_earned,
-          total_spent: u.total_spent,
-          registered_at: u.registered_at,
-          last_activity: u.last_activity_at,
+          balance: Number(u.balance) || 0,
+          total_earned: Number(u.total_earned) || 0,
+          total_spent: Number(u.total_spent) || 0,
+          registered_at: u.registered_at || new Date().toISOString(),
+          last_activity: u.last_activity_at || new Date().toISOString(),
           last_reward_at: u.last_reward_at || null,
-          verification_status: u.verification_status,
-          failed_verification_attempts: u.failed_verification_attempts,
-          referral_count: u.referral_count,
-          referred_by: u.referred_by ? Number(u.referred_by) : null,
-          ban_status: u.is_banned,
+          verification_status: u.verification_status || 'verified',
+          failed_verification_attempts: Number(u.failed_verification_attempts) || 0,
+          referral_count: Number(u.referral_count) || 0,
+          referred_by: u.referred_by ? toSafeTelegramUserId(u.referred_by) : null,
+          ban_status: Boolean(u.is_banned),
           banned_reason: u.banned_reason || null,
-          unlocked_channels: u.unlocked_channels || []
+          unlocked_channels: Array.isArray(u.unlocked_channels) ? u.unlocked_channels : []
         }));
         await supabase.from('users').upsert(userRows, { onConflict: 'telegram_user_id' });
       }
@@ -873,7 +892,7 @@ class DatabaseService {
       if (this.data.video_package_purchases.length > 0) {
         const vpRows = this.data.video_package_purchases.map(vp => ({
           id: vp.id,
-          user_id: Number(vp.user_id),
+          user_id: toSafeTelegramUserId(vp.user_id),
           package_id: vp.package_id,
           package_name: vp.package_name,
           price_paid: vp.price_paid,
@@ -888,7 +907,7 @@ class DatabaseService {
       if (this.data.star_transactions.length > 0) {
         const txRows = this.data.star_transactions.slice(0, 50).map(t => ({
           id: t.id,
-          user_id: Number(t.user_id),
+          user_id: toSafeTelegramUserId(t.user_id),
           amount: t.amount,
           balance_before: t.balance_before,
           balance_after: t.balance_after,
@@ -908,7 +927,7 @@ class DatabaseService {
           stars_amount: sc.stars_amount,
           is_active: sc.is_active,
           is_used: sc.is_used,
-          used_by_user_id: sc.used_by_user_id ? Number(sc.used_by_user_id) : null,
+          used_by_user_id: sc.used_by_user_id ? toSafeTelegramUserId(sc.used_by_user_id) : null,
           used_by_username: sc.used_by_username || null,
           used_at: sc.used_at || null,
           created_at: sc.created_at
@@ -926,7 +945,7 @@ class DatabaseService {
       if (this.data.file_purchases.length > 0) {
         const fpRows = this.data.file_purchases.map(fp => ({
           ...fp,
-          user_id: Number(fp.user_id)
+          user_id: toSafeTelegramUserId(fp.user_id)
         }));
         await supabase.from('file_purchases').upsert(fpRows, { onConflict: 'id' });
       }
@@ -953,8 +972,17 @@ class DatabaseService {
   public async atomic(updater: (data: EteboxDatabase) => void | Promise<void>): Promise<EteboxDatabase> {
     // Chain sequentially to prevent internal concurrency issues
     this.syncQueue = this.syncQueue.then(async () => {
-      await updater(this.data);
-      await this.syncToSupabase();
+      try {
+        await updater(this.data);
+      } catch (err: any) {
+        console.error('[DB] Atomic updater error:', err);
+        throw err;
+      }
+      try {
+        await this.syncToSupabase();
+      } catch (syncErr: any) {
+        console.warn('[DB] Atomic sync warning:', syncErr.message);
+      }
     });
 
     await this.syncQueue;
