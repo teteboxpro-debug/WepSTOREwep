@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
     telegram_user_id BIGINT PRIMARY KEY,
     username TEXT,
     first_name TEXT,
+    last_name TEXT,
     balance INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
     total_earned INTEGER NOT NULL DEFAULT 0,
     total_spent INTEGER NOT NULL DEFAULT 0,
@@ -25,8 +26,15 @@ CREATE TABLE IF NOT EXISTS users (
     referred_by BIGINT,
     ban_status BOOLEAN NOT NULL DEFAULT FALSE,
     banned_reason TEXT,
-    unlocked_channels JSONB NOT NULL DEFAULT '[]'::jsonb
+    unlocked_channels JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Safe additive columns if table already existed
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);

@@ -109,9 +109,15 @@ export default function DashboardView({ onNavigateTab, onOpenEmulator }: Dashboa
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-semibold text-white">Supabase PostgreSQL Permanent Architecture</h3>
-                <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" />
-                  Single Source of Truth
+                <span
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full flex items-center gap-1 border ${
+                    stats?.supabaseConnected
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                  }`}
+                >
+                  {stats?.supabaseConnected ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                  <span>{stats?.supabaseStatus || (stats?.supabaseConnected ? 'Database: Connected' : 'Database: Not Connected')}</span>
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">

@@ -31,6 +31,14 @@ export default function BotSettingsView() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [testingToken, setTestingToken] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [testingSupabase, setTestingSupabase] = useState(false);
+  const [supaTestResult, setSupaTestResult] = useState<{
+    ok: boolean;
+    status: string;
+    displayStatus: string;
+    message: string;
+    reason?: string;
+  } | null>(null);
 
   const fetchSettings = async () => {
     try {
@@ -45,6 +53,32 @@ export default function BotSettingsView() {
       setMessage({ type: 'error', text: err.message || 'Failed to fetch bot settings' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTestSupabase = async () => {
+    setTestingSupabase(true);
+    setSupaTestResult(null);
+    try {
+      const res = await apiRequest<{
+        ok: boolean;
+        status: string;
+        displayStatus: string;
+        message: string;
+        reason?: string;
+      }>('/admin/test-connection');
+      setSupaTestResult(res);
+      fetchSettings();
+    } catch (err: any) {
+      setSupaTestResult({
+        ok: false,
+        status: 'CONNECTION_FAILED',
+        displayStatus: 'Database: Not Connected',
+        message: 'Supabase PostgreSQL: CONNECTION FAILED',
+        reason: err.message
+      });
+    } finally {
+      setTestingSupabase(false);
     }
   };
 
@@ -140,17 +174,48 @@ export default function BotSettingsView() {
               <p className="text-xs text-slate-400">Single Source of Truth for all bot data & transactions</p>
             </div>
           </div>
-          <span
-            className={`px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 ${
-              settings?.supabaseConnected
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleTestSupabase}
+              disabled={testingSupabase}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/20 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${testingSupabase ? 'animate-spin' : ''}`} />
+              <span>{testingSupabase ? 'Testing...' : 'Test Connection'}</span>
+            </button>
+            <span
+              className={`px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 ${
+                settings?.supabaseConnected
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+              }`}
+            >
+              {settings?.supabaseConnected ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+              <span>{settings?.supabaseStatus || (settings?.supabaseConnected ? 'Database: Connected' : 'Database: Not Connected')}</span>
+            </span>
+          </div>
+        </div>
+
+        {supaTestResult && (
+          <div
+            className={`p-3.5 rounded-xl border text-xs font-mono space-y-1 ${
+              supaTestResult.ok
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
             }`}
           >
-            {settings?.supabaseConnected ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-            <span>{settings?.supabaseConnected ? 'Supabase Connected' : 'Config Required'}</span>
-          </span>
-        </div>
+            <div className="flex items-center gap-1.5 font-bold">
+              {supaTestResult.ok ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 text-amber-400" />}
+              <span>{supaTestResult.message}</span>
+            </div>
+            {supaTestResult.reason && (
+              <p className="text-[11px] text-slate-300 pl-5">
+                Reason: {supaTestResult.reason}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono bg-slate-950 p-4 rounded-xl border border-slate-800">
           <div>

@@ -53,7 +53,12 @@ export default function App() {
       .catch(() => {});
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await apiRequest('/admin/logout', { method: 'POST' });
+    } catch {
+      // Continue client cleanup even if network fails
+    }
     clearAuthToken();
     setAdmin(null);
   };
@@ -73,6 +78,7 @@ export default function App() {
         onOpenEmulator={() => setIsEmulatorOpen(true)}
         botOnline={appStats.botStatus === 'online'}
         supabaseConnected={appStats.supabaseConnected}
+        supabaseStatus={appStats.supabaseStatus}
       />
 
       {/* Main Content Area */}

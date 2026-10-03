@@ -6,6 +6,31 @@ import { getSupabaseStatus, verifySupabaseConnection, SUPABASE_CONFIG } from './
 export const app = express();
 app.use(express.json());
 
+// Enable CORS and preflight handling
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+// Normalize route prefix so both /api/admin/* and /admin/* work (e.g. on Vercel rewrites)
+app.use((req, _res, next) => {
+  if (!req.url.startsWith('/api') && (
+    req.url.startsWith('/admin') ||
+    req.url.startsWith('/auth') ||
+    req.url.startsWith('/telegram') ||
+    req.url.startsWith('/health') ||
+    req.url.startsWith('/status')
+  )) {
+    req.url = `/api${req.url}`;
+  }
+  next();
+});
+
 // Simple Auth Middleware
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const auth = req.headers.authorization;
@@ -35,10 +60,10 @@ async function logAction(adminUsername: string, action: string, target?: string,
 }
 
 // =============================================================================
-// 1. AUTHENTICATION
+// 1. AUTHENTICATION & SESSION
 // =============================================================================
 
-app.post('/api/admin/login', async (req: Request, res: Response) => {
+const handleAdminLogin = async (req: Request, res: Response) => {
   const { username, password } = req.body;
   const raw = db.getRaw();
   const admin = raw.admins.find(
@@ -61,10 +86,44 @@ app.post('/api/admin/login', async (req: Request, res: Response) => {
 
   await logAction(adminUser.username, 'ADMIN_LOGIN', undefined, 'Signed in to Admin Panel');
   return res.json({ token, admin: adminUser });
-});
+};
+
+app.post('/api/admin/login', handleAdminLogin);
+app.post('/api/auth/login', handleAdminLogin);
+
+const handleAdminLogout = async (_req: Request, res: Response) => {
+  await logAction('Abood', 'ADMIN_LOGOUT', undefined, 'Signed out from Admin Panel');
+  return res.json({ success: true, message: 'Logged out successfully' });
+};
+
+app.post('/api/admin/logout', handleAdminLogout);
+app.post('/api/auth/logout', handleAdminLogout);
+
+const handleAdminSession = async (_req: Request, res: Response) => {
+  const raw = db.getRaw();
+  const admin = raw.admins[0] || {
+    id: 'admin_1',
+    username: 'Abood',
+    permissions: ['all']
+  };
+  return res.json({
+    authenticated: true,
+    admin: {
+      id: admin.id,
+      username: admin.username,
+      permissions: admin.permissions || ['all']
+    }
+  });
+};
+
+app.get('/api/admin/me', requireAdmin, handleAdminSession);
+app.get('/api/admin/session', requireAdmin, handleAdminSession);
+app.get('/api/admin/profile', requireAdmin, handleAdminSession);
+app.get('/api/auth/me', requireAdmin, handleAdminSession);
+app.get('/api/auth/session', requireAdmin, handleAdminSession);
 
 // =============================================================================
-// 2. DASHBOARD METRICS
+// 2. DASHBOARD METRICS & SUPABASE CONNECTION TEST
 // =============================================================================
 
 app.get('/api/admin/stats', requireAdmin, async (_req: Request, res: Response) => {
@@ -96,18 +155,93 @@ app.get('/api/admin/stats', requireAdmin, async (_req: Request, res: Response) =
     botError: botStatus.error,
     recentTransactions: raw.star_transactions.slice(0, 10),
     supabaseConnected: supaStatus.verified,
+    supabaseStatus: supaStatus.displayStatus,
+    supabaseDetails: supaStatus.message,
     supabaseUrl: supaStatus.url,
-    supabaseStatus: supaStatus.lastCheck.message
+    supabaseProjectId: supaStatus.projectId
   });
 });
 
-// Supabase Status Diagnostic endpoint
-app.get('/api/admin/supabase-status', requireAdmin, async (_req: Request, res: Response) => {
+// Real server-side Supabase Connection Test & Health Check
+const handleDbConnectionTest = async (_req: Request, res: Response) => {
   const check = await verifySupabaseConnection();
-  const status = getSupabaseStatus();
+  return res.json({
+    ok: check.ok,
+    status: check.status, // 'CONNECTED' | 'CONNECTION_FAILED' | 'SCHEMA_MISSING'
+    displayStatus: check.displayStatus, // 'Database: Connected' | 'Database: Not Connected' | 'Database: Schema Missing'
+    message: check.message,
+    reason: check.reason,
+    projectId: check.projectId,
+    url: check.url,
+    tablesVerified: check.tablesVerified || [],
+    missingTables: check.missingTables || []
+  });
+};
+
+app.get('/api/admin/supabase-status', requireAdmin, handleDbConnectionTest);
+app.get('/api/admin/test-connection', requireAdmin, handleDbConnectionTest);
+app.post('/api/admin/test-connection', requireAdmin, handleDbConnectionTest);
+app.get('/api/admin/database/test', requireAdmin, handleDbConnectionTest);
+app.post('/api/admin/database/test', requireAdmin, handleDbConnectionTest);
+app.get('/api/admin/database-status', requireAdmin, handleDbConnectionTest);
+app.get('/api/admin/db-status', requireAdmin, handleDbConnectionTest);
+
+// Public health checks
+app.get('/api/health', async (_req: Request, res: Response) => {
+  const supa = getSupabaseStatus();
   res.json({
-    ...status,
-    liveCheck: check
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    supabase: {
+      projectId: supa.projectId,
+      url: supa.url,
+      connected: supa.verified,
+      displayStatus: supa.displayStatus
+    }
+  });
+});
+
+app.get('/api/status', async (_req: Request, res: Response) => {
+  const supa = getSupabaseStatus();
+  const bot = await telegramBot.getBotStatus();
+  res.json({
+    status: 'ok',
+    bot: bot.online ? 'online' : 'offline',
+    supabase: supa.displayStatus
+  });
+});
+
+// Bot testing routes
+const handleBotTest = async (_req: Request, res: Response) => {
+  const botStatus = await telegramBot.getBotStatus();
+  return res.json({
+    online: botStatus.online,
+    configured: botStatus.configured,
+    botUsername: botStatus.botInfo?.username,
+    botFirstName: botStatus.botInfo?.first_name,
+    error: botStatus.error,
+    message: botStatus.online
+      ? `Bot is online as @${botStatus.botInfo?.username}`
+      : botStatus.error || 'Bot is offline or token invalid'
+  });
+};
+
+app.get('/api/admin/bot/test', requireAdmin, handleBotTest);
+app.post('/api/admin/bot/test', requireAdmin, handleBotTest);
+app.get('/api/admin/bot-test', requireAdmin, handleBotTest);
+app.post('/api/admin/bot-test', requireAdmin, handleBotTest);
+app.get('/api/admin/settings', requireAdmin, async (_req: Request, res: Response) => {
+  const raw = db.getRaw();
+  const supaStatus = getSupabaseStatus();
+  const botStatus = await telegramBot.getBotStatus();
+  res.json({
+    hasToken: Boolean(raw.bot_settings.bot_token),
+    status: botStatus.online ? 'online' : botStatus.configured ? 'token_invalid' : 'offline',
+    isActive: botStatus.online,
+    botUsername: botStatus.botInfo?.username,
+    storeUrl: raw.bot_settings.store_url || 'https://etebox.com/store',
+    backupBotUrl: raw.bot_settings.backup_bot_url || 'https://t.me/EteboxBackupBot',
+    supabaseConnected: supaStatus.verified
   });
 });
 
@@ -623,3 +757,12 @@ app.post('/api/admin/emulator/send', requireAdmin, async (req: Request, res: Res
     mainMenu: telegramBot.getMainMenuKeyboard()
   });
 });
+
+// JSON 404 Handler for any unmatched API route
+app.all('/api/*', (req: Request, res: Response) => {
+  res.status(404).json({
+    error: `API route not found: ${req.method} ${req.originalUrl || req.url}`,
+    status: 404
+  });
+});
+

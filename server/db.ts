@@ -8,6 +8,7 @@ export interface User {
   telegram_user_id: number;
   username?: string;
   first_name?: string;
+  last_name?: string;
   balance: number;
   total_earned: number;
   total_spent: number;
@@ -21,6 +22,8 @@ export interface User {
   is_banned: boolean;
   banned_reason?: string;
   unlocked_channels?: string[];
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Admin {

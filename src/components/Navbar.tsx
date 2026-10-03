@@ -24,6 +24,7 @@ interface NavbarProps {
   onOpenEmulator: () => void;
   botOnline?: boolean;
   supabaseConnected?: boolean;
+  supabaseStatus?: string;
 }
 
 export default function Navbar({
@@ -33,7 +34,8 @@ export default function Navbar({
   onLogout,
   onOpenEmulator,
   botOnline,
-  supabaseConnected
+  supabaseConnected,
+  supabaseStatus
 }: NavbarProps) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -81,7 +83,7 @@ export default function Navbar({
               title="Supabase PostgreSQL Persistence Status"
             >
               <Database className="w-3.5 h-3.5" />
-              <span>{supabaseConnected ? 'Supabase Connected' : 'Supabase (Check Env)'}</span>
+              <span>{supabaseStatus || (supabaseConnected ? 'Database: Connected' : 'Database: Not Connected')}</span>
             </div>
 
             {/* Bot Status badge */}

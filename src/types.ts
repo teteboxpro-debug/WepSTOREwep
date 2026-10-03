@@ -25,7 +25,10 @@ export interface DashboardStats {
   lastUpdateReceivedAt?: string;
   recentTransactions: StarTx[];
   supabaseConnected?: boolean;
+  supabaseStatus?: string;
+  supabaseDetails?: string;
   supabaseUrl?: string;
+  supabaseProjectId?: string;
 }
 
 export interface BotSettingsData {
@@ -51,6 +54,8 @@ export interface BotSettingsData {
   supabaseConnected?: boolean;
   supabaseUrl?: string;
   supabaseStatus?: string;
+  supabaseDetails?: string;
+  supabaseProjectId?: string;
 }
 
 export interface UserItem {
